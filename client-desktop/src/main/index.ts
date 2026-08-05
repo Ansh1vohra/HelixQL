@@ -1,6 +1,8 @@
 import { join } from "path";
 import { app, shell, BrowserWindow } from "electron";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
+import { registerIpcHandlers } from "./ipc";
+import { disconnect } from "./db/connection";
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -44,6 +46,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window);
   });
 
+  registerIpcHandlers();
   createWindow();
 
   app.on("activate", function () {
@@ -57,6 +60,9 @@ app.on("window-all-closed", () => {
   }
 });
 
-// Phase 4 wires in: IPC handlers for local DB connection pooling
-// (mysql2/pg), schema introspection, EXPLAIN + query execution — all
-// invoked from the renderer only via the preload-exposed API surface.
+// Close database sockets cleanly on quit. Credentials and the api_token
+// live in process memory only, so exiting is all it takes to clear them —
+// there is nothing on disk to wipe.
+app.on("before-quit", () => {
+  void disconnect();
+});

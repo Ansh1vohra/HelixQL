@@ -1,0 +1,6 @@
+# Server logs written by scripts/dev.sh
+.dev-logs/
+
+# OS noise
+.DS_Store
+Thumbs.db

@@ -7,7 +7,18 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    // Deliberately NOT externalizeDepsPlugin(): the preload runs with
+    // `sandbox: true`, where `require()` resolves only Electron's own
+    // built-ins. Any externalized dependency becomes a bare require that
+    // fails at load time, taking the whole bridge down with it and leaving
+    // the renderer with no `window.api` — a blank window and a confusing
+    // "Cannot read properties of undefined" in the console.
+    // Bundling everything except `electron` itself keeps the sandbox on.
+    build: {
+      rollupOptions: {
+        external: ["electron"],
+      },
+    },
   },
   renderer: {
     root: "src/renderer",

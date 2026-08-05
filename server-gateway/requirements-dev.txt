@@ -1,0 +1,5 @@
+# Test-only dependencies. Kept out of requirements.txt so the deployed
+# gateway image doesn't carry a test runner.
+-r requirements.txt
+pytest==8.4.2
+pytest-asyncio==1.3.0
