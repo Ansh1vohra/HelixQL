@@ -85,12 +85,11 @@ jobs:
           if-no-files-found: error
 
   publish:
-    # Only tags produce a Release; manual runs stop after building.
+    # Only tags publish; manual runs stop after building so a test build
+    # never replaces what the website is serving.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - uses: actions/download-artifact@v4
@@ -98,12 +97,86 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
-          # Draft so the installers can be checked before anyone can download
-          # them. The download route only resolves published releases, so the
-          # website keeps serving the previous version until you hit publish.
-          draft: true
-          generate_release_notes: true
+      # The manifest is what the control plane reads; the installers are
+      # just files next to it. Built here rather than per-platform because
+      # only this job can see every artifact at once.
+      - name: Build release manifest
+        run: |
+          set -euo pipefail
+          cd artifacts
+          ls -la
+
+          python3 - "${GITHUB_REF_NAME}" <<'PY'
+          import hashlib, json, os, re, sys
+
+          version = sys.argv[1]
+
+          # Maps a file to the platform key the download route asks for.
+          # Ordered: the first pattern that matches wins, so the more
+          # specific mac patterns are checked before any generic fallback.
+          patterns = [
+              ("windows",        re.compile(r"-setup\.exe$", re.I)),
+              ("mac-arm64",      re.compile(r"-arm64\.dmg$", re.I)),
+              ("mac-x64",        re.compile(r"-x64\.dmg$", re.I)),
+              ("linux-appimage", re.compile(r"\.AppImage$", re.I)),
+              ("linux-deb",      re.compile(r"\.deb$", re.I)),
+          ]
+
+          files = {}
+          for name in sorted(os.listdir(".")):
+              if not os.path.isfile(name):
+                  continue
+              for key, pattern in patterns:
+                  if pattern.search(name):
+                      if key in files:
+                          raise SystemExit(f"two files matched {key}: {files[key]['name']} and {name}")
+                      digest = hashlib.sha256()
+                      with open(name, "rb") as handle:
+                          for chunk in iter(lambda: handle.read(1 << 20), b""):
+                              digest.update(chunk)
+                      files[key] = {
+                          "name": name,
+                          "size": os.path.getsize(name),
+                          "sha256": digest.hexdigest(),
+                      }
+                      break
+
+          if not files:
+              raise SystemExit("no installers matched any platform pattern — refusing to publish an empty manifest")
+
+          manifest = {"version": version, "files": files}
+          with open("latest.json", "w") as handle:
+              json.dump(manifest, handle, indent=2)
+          print(json.dumps(manifest, indent=2))
+          PY
+
+      # R2 speaks the S3 API, so the standard AWS CLI works against it. The
+      # same step targets S3 by dropping --endpoint-url.
+      - name: Upload installers to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+
+          # Installers first, manifest last. The manifest is what makes a
+          # version visible to the website, so publishing it before its
+          # files are uploaded would advertise downloads that 404.
+          for file in *.exe *.dmg *.AppImage *.deb; do
+            [ -e "$file" ] || continue
+            echo "uploading $file"
+            aws s3 cp "$file" "s3://${R2_BUCKET}/$file" \
+              --endpoint-url "$R2_ENDPOINT" \
+              --cache-control "public, max-age=31536000, immutable"
+          done
+
+          # Short cache: this file is how a new release becomes visible, and
+          # the control plane already caches it for ten minutes of its own.
+          aws s3 cp latest.json "s3://${R2_BUCKET}/latest.json" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json \
+            --cache-control "public, max-age=60"

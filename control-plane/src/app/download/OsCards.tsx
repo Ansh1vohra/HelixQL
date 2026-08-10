@@ -88,15 +88,22 @@ export function OsCards({ availability }: { availability: Availability }) {
                 >
                   {platform.primary.label}
                 </a>
-                <p className="mt-2 text-xs text-slate-400">
-                  {primary.version} · {formatSize(primary.size)}
-                </p>
+                {/* Size is 0 for a direct-URL download, where it isn't known
+                    — better to show nothing than a confident "0 MB". */}
+                {(primary.version || primary.size > 0) && (
+                  <p className="mt-2 text-xs text-slate-400">
+                    {[primary.version, primary.size > 0 ? formatSize(primary.size) : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                )}
                 {secondary && (
                   <a
                     href={`/api/download/${platform.secondary!.platform}`}
                     className="mt-1 inline-block text-xs font-medium text-brand-600 underline-offset-2 hover:underline"
                   >
-                    {platform.secondary!.label} ({formatSize(secondary.size)})
+                    {platform.secondary!.label}
+                    {secondary.size > 0 ? ` (${formatSize(secondary.size)})` : ""}
                   </a>
                 )}
               </>

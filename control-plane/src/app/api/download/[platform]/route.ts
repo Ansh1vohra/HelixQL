@@ -5,9 +5,9 @@ import { isPlatform, resolveAsset } from "@/lib/downloads";
  * Redirects to the installer for the requested platform.
  *
  * A redirect rather than a proxy: streaming ~80MB through a serverless
- * function would burn bandwidth and execution time on every download for no
- * benefit, and would hit the platform's response limits. GitHub's CDN serves
- * the bytes; this route only resolves which file is current.
+ * function would burn execution time and bandwidth on every download, and
+ * would exceed the platform's response limits. The storage CDN serves the
+ * bytes; this route only resolves which file is current.
  *
  * Stable URLs (/api/download/windows) are what the site and any external
  * link point at, so publishing a new release changes what users get without
