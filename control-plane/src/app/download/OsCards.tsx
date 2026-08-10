@@ -1,13 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatSize, type Availability, type Platform } from "@/lib/downloads";
 
 type Os = "mac" | "windows" | "linux";
 
-const PLATFORMS: { id: Os; name: string; requirement: string }[] = [
-  { id: "mac", name: "macOS", requirement: "macOS 12 Monterey or later, Apple Silicon & Intel" },
-  { id: "windows", name: "Windows", requirement: "Windows 10 or later, 64-bit" },
-  { id: "linux", name: "Linux", requirement: "Ubuntu 20.04+, Debian, Fedora (AppImage & .deb)" },
+/**
+ * Each card offers one primary download plus, where a platform ships more
+ * than one artifact, a secondary link. macOS is split by CPU rather than
+ * shipped as a universal binary — a universal build doubles the download for
+ * every user to save one click for some of them.
+ */
+const PLATFORMS: {
+  id: Os;
+  name: string;
+  requirement: string;
+  primary: { platform: Platform; label: string };
+  secondary?: { platform: Platform; label: string };
+}[] = [
+  {
+    id: "mac",
+    name: "macOS",
+    requirement: "macOS 12 Monterey or later, Apple Silicon & Intel",
+    primary: { platform: "mac-arm64", label: "Download for Apple Silicon" },
+    secondary: { platform: "mac-x64", label: "Intel Mac" },
+  },
+  {
+    id: "windows",
+    name: "Windows",
+    requirement: "Windows 10 or later, 64-bit",
+    primary: { platform: "windows", label: "Download for Windows" },
+  },
+  {
+    id: "linux",
+    name: "Linux",
+    requirement: "Ubuntu 20.04+, Debian, Fedora (AppImage & .deb)",
+    primary: { platform: "linux-appimage", label: "Download AppImage" },
+    secondary: { platform: "linux-deb", label: ".deb package" },
+  },
 ];
 
 function detectOs(): Os | null {
@@ -19,39 +49,69 @@ function detectOs(): Os | null {
   return null;
 }
 
-export function OsCards() {
+export function OsCards({ availability }: { availability: Availability }) {
   const [detected, setDetected] = useState<Os | null>(null);
 
+  // Detection runs after mount because the server has no user agent to read;
+  // rendering it during SSR would mismatch and get discarded anyway.
   useEffect(() => {
     setDetected(detectOs());
   }, []);
 
   return (
     <div className="grid gap-6 sm:grid-cols-3">
-      {PLATFORMS.map((platform) => (
-        <div
-          key={platform.id}
-          className={`relative rounded-2xl border p-6 text-center ${
-            detected === platform.id ? "border-brand-500 shadow-md shadow-brand-500/10" : "border-slate-200"
-          }`}
-        >
-          {detected === platform.id && (
-            <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-brand-600 px-3 py-1 text-xs font-semibold text-white">
-              Recommended for you
-            </span>
-          )}
-          <PlatformIcon id={platform.id} className="mx-auto h-10 w-10 text-slate-700" />
-          <h3 className="mt-4 text-base font-semibold text-slate-900">{platform.name}</h3>
-          <p className="mt-1 text-xs text-slate-500">{platform.requirement}</p>
-          <button
-            type="button"
-            disabled
-            className="mt-5 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-400"
+      {PLATFORMS.map((platform) => {
+        const primary = availability[platform.primary.platform];
+        const secondary = platform.secondary ? availability[platform.secondary.platform] : undefined;
+
+        return (
+          <div
+            key={platform.id}
+            className={`relative rounded-2xl border p-6 text-center ${
+              detected === platform.id ? "border-brand-500 shadow-md shadow-brand-500/10" : "border-slate-200"
+            }`}
           >
-            Coming soon
-          </button>
-        </div>
-      ))}
+            {detected === platform.id && (
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-brand-600 px-3 py-1 text-xs font-semibold text-white">
+                Recommended for you
+              </span>
+            )}
+            <PlatformIcon id={platform.id} className="mx-auto h-10 w-10 text-slate-700" />
+            <h3 className="mt-4 text-base font-semibold text-slate-900">{platform.name}</h3>
+            <p className="mt-1 text-xs text-slate-500">{platform.requirement}</p>
+
+            {primary ? (
+              <>
+                <a
+                  href={`/api/download/${platform.primary.platform}`}
+                  className="mt-5 inline-flex w-full items-center justify-center rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-500"
+                >
+                  {platform.primary.label}
+                </a>
+                <p className="mt-2 text-xs text-slate-400">
+                  {primary.version} · {formatSize(primary.size)}
+                </p>
+                {secondary && (
+                  <a
+                    href={`/api/download/${platform.secondary!.platform}`}
+                    className="mt-1 inline-block text-xs font-medium text-brand-600 underline-offset-2 hover:underline"
+                  >
+                    {platform.secondary!.label} ({formatSize(secondary.size)})
+                  </a>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="mt-5 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-400"
+              >
+                Coming soon
+              </button>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

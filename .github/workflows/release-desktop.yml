@@ -1,0 +1,109 @@
+name: Release desktop client
+
+# Publishing is driven by tags: push v0.1.0 and this builds every platform
+# and attaches the installers to a GitHub Release. The control plane's
+# /api/download/* routes resolve the newest release at request time, so the
+# website starts serving a new version with no deploy of its own.
+on:
+  push:
+    tags:
+      - "v*"
+  # Manual runs build and upload artifacts without publishing a release,
+  # which is how you smoke-test a build before tagging.
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      # One platform failing should not discard the others' artifacts —
+      # a macOS signing problem shouldn't cost you the Windows build.
+      fail-fast: false
+      matrix:
+        include:
+          # macOS installers can only be produced on macOS; Apple's toolchain
+          # has no cross-compiler. This runner is the only way to ship a .dmg.
+          - os: macos-latest
+            command: build:mac
+          # Windows builds natively here, which avoids the Wine dependency
+          # that cross-building from Linux otherwise requires.
+          - os: windows-latest
+            command: build:win
+          - os: ubuntu-latest
+            command: build:linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client-desktop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: client-desktop
+        run: npm ci
+
+      # Catches a broken build before it is packaged into an installer that
+      # only fails once a user has downloaded it.
+      - name: Typecheck and test
+        working-directory: client-desktop
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build installers
+        working-directory: client-desktop
+        env:
+          # electron-builder publishes to the Release itself when a token is
+          # present; this is provided automatically to the workflow.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # --- Code signing (optional) ---
+          # Without these the build still succeeds, but Windows shows a
+          # SmartScreen warning and macOS Gatekeeper refuses to open the app
+          # on other people's machines. See the download docs.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run ${{ matrix.command }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          # Only the distributable installers — the unpacked directories are
+          # build intermediates and would multiply the upload for nothing.
+          path: |
+            client-desktop/dist/*.exe
+            client-desktop/dist/*.dmg
+            client-desktop/dist/*.AppImage
+            client-desktop/dist/*.deb
+          if-no-files-found: error
+
+  publish:
+    # Only tags produce a Release; manual runs stop after building.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          # Draft so the installers can be checked before anyone can download
+          # them. The download route only resolves published releases, so the
+          # website keeps serving the previous version until you hit publish.
+          draft: true
+          generate_release_notes: true
