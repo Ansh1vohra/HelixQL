@@ -102,11 +102,11 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
   const latestEvent = events[events.length - 1];
 
   return (
-    <div className="flex h-screen flex-col bg-slate-950 text-slate-200">
-      <header className="flex shrink-0 items-center justify-between border-b border-slate-800 px-4 py-2.5">
+    <div className="flex h-screen flex-col bg-white text-slate-800">
+      <header className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-2.5">
         <div className="flex items-baseline gap-3">
-          <span className="text-sm font-bold tracking-tight text-brand-400">HelixQL</span>
-          <span className="text-[11px] text-slate-600">
+          <span className="text-sm font-bold tracking-tight text-brand-600">HelixQL</span>
+          <span className="text-[11px] text-slate-400">
             {status.connected ? `${status.dialect} · ${status.database}` : "not connected"}
           </span>
         </div>
@@ -124,8 +124,8 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-72 shrink-0 flex-col border-r border-slate-800">
-          <div className="flex shrink-0 border-b border-slate-800">
+        <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200">
+          <div className="flex shrink-0 border-b border-slate-200">
             {(["connection", "schema"] as const).map((tab) => (
               <button
                 key={tab}
@@ -133,8 +133,8 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
                 onClick={() => setSidebarTab(tab)}
                 className={`flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
                   sidebarTab === tab
-                    ? "border-b-2 border-brand-500 text-brand-300"
-                    : "text-slate-500 hover:text-slate-300"
+                    ? "border-b-2 border-brand-500 text-brand-600"
+                    : "text-slate-400 hover:text-slate-600"
                 }`}
               >
                 {tab}
@@ -161,8 +161,8 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
                   onClick={() => setMode(option)}
                   className={`rounded px-2.5 py-1 text-[11px] font-medium transition ${
                     mode === option
-                      ? "bg-brand-600/20 text-brand-300"
-                      : "text-slate-500 hover:bg-slate-800/60 hover:text-slate-300"
+                      ? "bg-brand-100 text-brand-700"
+                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                   }`}
                 >
                   {option === "ask" ? "Ask in English" : "Write SQL"}
@@ -182,7 +182,7 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
                     ? "Ask a question — e.g. Who made the most orders from Gujarat this month?"
                     : "Connect to a database to begin"
                 }
-                className="w-full resize-none rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 disabled:opacity-50"
+                className="w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 disabled:opacity-50"
               />
             ) : (
               <textarea
@@ -193,12 +193,12 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
                 rows={5}
                 spellCheck={false}
                 placeholder={status.connected ? "SELECT * FROM users LIMIT 10" : "Connect to a database to begin"}
-                className="w-full resize-y rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2.5 font-mono text-xs leading-relaxed text-brand-100 outline-none transition placeholder:text-slate-600 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 disabled:opacity-50"
+                className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-xs leading-relaxed text-brand-700 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 disabled:opacity-50"
               />
             )}
 
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-slate-600">
+              <span className="text-[11px] text-slate-400">
                 {mode === "ask"
                   ? "Enter to run · results stay on this machine"
                   : "Read-only SELECT queries only · ⌘/Ctrl+Enter to run · not counted against your plan"}
@@ -206,7 +206,7 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
 
               <div className="flex items-center gap-3">
                 {running && latestEvent && (
-                  <span className="animate-pulse text-[11px] text-brand-400">{latestEvent.message}</span>
+                  <span className="animate-pulse text-[11px] text-brand-600">{latestEvent.message}</span>
                 )}
                 <Button onClick={handleRun} disabled={!canRun}>
                   {running ? "Running…" : mode === "ask" ? "Run analysis" : "Run query"}

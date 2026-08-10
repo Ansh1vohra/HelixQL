@@ -38,10 +38,10 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (session: SessionInfo)
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6">
+    <div className="flex min-h-screen items-center justify-center bg-white p-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-brand-400">HelixQL</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-brand-600">HelixQL</h1>
           <p className="mt-1 text-xs text-slate-500">Sign in with your HelixQL account</p>
         </div>
 
@@ -72,11 +72,11 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (session: SessionInfo)
           </Button>
         </form>
 
-        <div className="mt-6 border-t border-slate-800 pt-4">
+        <div className="mt-6 border-t border-slate-200 pt-4">
           <button
             type="button"
             onClick={() => setShowEndpoints((open) => !open)}
-            className="text-[11px] text-slate-500 transition hover:text-slate-300"
+            className="text-[11px] text-slate-500 transition hover:text-slate-700"
           >
             {showEndpoints ? "− Hide" : "+ Show"} server settings
           </button>
@@ -98,7 +98,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (session: SessionInfo)
           )}
         </div>
 
-        <p className="mt-6 text-center text-[11px] leading-relaxed text-slate-600">
+        <p className="mt-6 text-center text-[11px] leading-relaxed text-slate-400">
           Database credentials are entered after sign-in and never leave this machine.
         </p>
       </div>

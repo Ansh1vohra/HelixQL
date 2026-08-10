@@ -103,7 +103,7 @@ export function ConnectionPanel({
           </Button>
         </div>
 
-        <p className="text-[11px] leading-relaxed text-slate-600">
+        <p className="text-[11px] leading-relaxed text-slate-400">
           Credentials are held in this app&apos;s memory only. They are never written to disk and never sent to
           HelixQL&apos;s servers.
         </p>
@@ -139,12 +139,12 @@ export function ConnectionPanel({
         hint="Use a read-only database account for the tightest setup."
       />
 
-      <label className="flex items-center gap-2 text-xs text-slate-400">
+      <label className="flex items-center gap-2 text-xs text-slate-500">
         <input
           type="checkbox"
           checked={form.ssl}
           onChange={(e) => update("ssl", e.target.checked)}
-          className="rounded border-slate-700 bg-slate-900"
+          className="rounded border-slate-300 bg-white"
         />
         Use SSL/TLS
       </label>

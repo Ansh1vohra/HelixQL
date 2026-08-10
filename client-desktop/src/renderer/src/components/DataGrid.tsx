@@ -18,13 +18,13 @@ export function DataGrid({ grid, emptyMessage }: { grid: ResultGrid; emptyMessag
 
   return (
     <table className="w-full border-collapse text-left text-xs">
-      <thead className="sticky top-0 z-10 bg-slate-900">
+      <thead className="sticky top-0 z-10 bg-slate-100">
         <tr>
-          <th className="border-b border-slate-800 px-3 py-2 font-medium text-slate-600">#</th>
+          <th className="border-b border-slate-200 px-3 py-2 font-medium text-slate-400">#</th>
           {grid.columns.map((column) => (
             <th
               key={column}
-              className="whitespace-nowrap border-b border-slate-800 px-3 py-2 font-semibold text-slate-300"
+              className="whitespace-nowrap border-b border-slate-200 px-3 py-2 font-semibold text-slate-600"
             >
               {column}
             </th>
@@ -33,8 +33,8 @@ export function DataGrid({ grid, emptyMessage }: { grid: ResultGrid; emptyMessag
       </thead>
       <tbody>
         {grid.rows.map((row, index) => (
-          <tr key={index} className="hover:bg-slate-800/40">
-            <td className="border-b border-slate-800/60 px-3 py-1.5 font-mono text-[10px] text-slate-600">
+          <tr key={index} className="hover:bg-slate-50">
+            <td className="border-b border-slate-100 px-3 py-1.5 font-mono text-[10px] text-slate-400">
               {index + 1}
             </td>
             {grid.columns.map((column) => {
@@ -42,12 +42,12 @@ export function DataGrid({ grid, emptyMessage }: { grid: ResultGrid; emptyMessag
               return (
                 <td
                   key={column}
-                  className={`max-w-xs truncate border-b border-slate-800/60 px-3 py-1.5 ${
+                  className={`max-w-xs truncate border-b border-slate-100 px-3 py-1.5 ${
                     value === null || value === undefined
-                      ? "italic text-slate-600"
+                      ? "italic text-slate-400"
                       : typeof value === "number"
-                        ? "font-mono text-brand-300"
-                        : "text-slate-200"
+                        ? "font-mono text-brand-700"
+                        : "text-slate-800"
                   }`}
                   title={renderCell(value)}
                 >

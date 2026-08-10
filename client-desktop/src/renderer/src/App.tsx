@@ -12,10 +12,10 @@ import { unwrap } from "./lib/ipc";
  */
 function BridgeMissing(): JSX.Element {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 p-8">
+    <div className="flex min-h-screen items-center justify-center bg-white p-8">
       <div className="max-w-md text-center">
-        <h1 className="mb-2 text-sm font-semibold text-red-400">The IPC bridge failed to load</h1>
-        <p className="text-xs leading-relaxed text-slate-400">
+        <h1 className="mb-2 text-sm font-semibold text-red-600">The IPC bridge failed to load</h1>
+        <p className="text-xs leading-relaxed text-slate-500">
           The preload script did not run, so this window has no way to reach the database or the
           HelixQL services. Check the terminal for a preload error — a dependency that cannot be
           bundled into the sandboxed preload is the usual cause.
@@ -43,7 +43,7 @@ function App(): JSX.Element {
   if (!bridgeReady) return <BridgeMissing />;
 
   if (checking) {
-    return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-xs text-slate-600" />;
+    return <div className="flex min-h-screen items-center justify-center bg-white text-xs text-slate-400" />;
   }
 
   return session ? (

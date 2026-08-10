@@ -40,12 +40,12 @@ export function SchemaBrowser({ refreshKey }: { refreshKey: number }): JSX.Eleme
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 border-b border-slate-800 p-2">
+      <div className="shrink-0 border-b border-slate-200 p-2">
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter tables and columns…"
-          className="w-full rounded border border-slate-700 bg-slate-900/60 px-2 py-1.5 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-brand-500"
+          className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none placeholder:text-slate-400 focus:border-brand-500"
         />
       </div>
 
@@ -53,7 +53,7 @@ export function SchemaBrowser({ refreshKey }: { refreshKey: number }): JSX.Eleme
         {tables.length === 0 ? (
           <EmptyState>No table or column matches “{filter}”.</EmptyState>
         ) : (
-          <ul className="divide-y divide-slate-800/60">
+          <ul className="divide-y divide-slate-200">
             {tables.map((table) => (
               <TableRow
                 key={table.name}
@@ -66,7 +66,7 @@ export function SchemaBrowser({ refreshKey }: { refreshKey: number }): JSX.Eleme
         )}
       </div>
 
-      <div className="shrink-0 border-t border-slate-800 px-3 py-1.5 text-[10px] text-slate-600">
+      <div className="shrink-0 border-t border-slate-200 px-3 py-1.5 text-[10px] text-slate-400">
         {blueprint.tables.length} tables · {blueprint.database} · mapped{" "}
         {new Date(blueprint.capturedAt).toLocaleTimeString()}
       </div>
@@ -93,31 +93,31 @@ function TableRow({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-3 py-1.5 text-left transition hover:bg-slate-800/40"
+        className="flex w-full items-center justify-between px-3 py-1.5 text-left transition hover:bg-slate-100"
       >
-        <span className="flex items-center gap-1.5 font-mono text-xs text-slate-200">
-          <span className="text-slate-600">{open ? "▾" : "▸"}</span>
+        <span className="flex items-center gap-1.5 font-mono text-xs text-slate-800">
+          <span className="text-slate-400">{open ? "▾" : "▸"}</span>
           {table.name}
         </span>
-        <span className="text-[10px] text-slate-600">{table.columns.length}</span>
+        <span className="text-[10px] text-slate-400">{table.columns.length}</span>
       </button>
 
       {open && (
-        <ul className="bg-slate-950/40 pb-1.5 pl-7 pr-3">
+        <ul className="bg-slate-50 pb-1.5 pl-7 pr-3">
           {table.columns.map((column) => {
             const references = foreignKeyFor(column.name);
             return (
               <li key={column.name} className="flex items-baseline justify-between gap-2 py-0.5">
-                <span className="truncate font-mono text-[11px] text-slate-300">
-                  {column.isPrimaryKey && <span className="mr-1 text-amber-400" title="Primary key">PK</span>}
+                <span className="truncate font-mono text-[11px] text-slate-600">
+                  {column.isPrimaryKey && <span className="mr-1 text-amber-600" title="Primary key">PK</span>}
                   {references && (
-                    <span className="mr-1 text-brand-400" title={`References ${references}`}>
+                    <span className="mr-1 text-brand-600" title={`References ${references}`}>
                       FK
                     </span>
                   )}
                   {column.name}
                 </span>
-                <span className="shrink-0 font-mono text-[10px] text-slate-600">
+                <span className="shrink-0 font-mono text-[10px] text-slate-400">
                   {column.dataType}
                   {!column.nullable && " ·not null"}
                 </span>
