@@ -1,0 +1,47 @@
+# Render blueprint for the HelixQL gateway.
+#
+# Point Render at this repository and it provisions the service below.
+# Secrets are declared with `sync: false`, which means Render prompts for
+# them in the dashboard and never reads them from this file — none of these
+# values belong in version control.
+#
+# The control plane is deployed separately on Vercel; only its public URL
+# and the shared internal secret are needed here.
+
+services:
+  - type: web
+    name: helixql-gateway
+    runtime: docker
+    # The Dockerfile lives in server-gateway/, not at the repository root.
+    rootDir: server-gateway
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      # --- Model provider ---
+      # Groq over Gemini: its free tier is measured in thousands of requests
+      # per day rather than ~20, which matters for a hosted deployment.
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+
+      # --- Semantic schema matching (optional) ---
+      # Leave unset and the gateway logs a warning and falls back to lexical
+      # schema pruning. It degrades ranking; it never fails a query.
+      - key: HF_TOKEN
+        sync: false
+
+      # --- Control plane ---
+      # Must match GATEWAY_INTERNAL_SECRET in the Vercel deployment exactly,
+      # or every token verification returns 401.
+      - key: CONTROL_PLANE_BASE_URL
+        value: https://helixql.vercel.app
+      - key: CONTROL_PLANE_INTERNAL_SECRET
+        sync: false
+
+      - key: LOG_LEVEL
+        value: INFO

@@ -1,0 +1,23 @@
+# The local virtualenv is 112MB of Linux-specific binaries that the image
+# rebuilds from requirements.txt anyway. Copying it in would both bloat the
+# image and risk shadowing the container's own interpreter.
+venv/
+.venv/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets never belong in an image layer — they are supplied as environment
+# variables by the host (Render's dashboard) at runtime.
+.env
+.env.*
+
+tests/
+requirements-dev.txt
+pytest.ini
+README.md
+Dockerfile
+.dockerignore

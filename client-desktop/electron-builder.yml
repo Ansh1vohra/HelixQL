@@ -39,6 +39,17 @@ files:
 # They stay in main-process memory and are never written to disk regardless.
 asar: true
 
+# Chromium ships 55 locale bundles totalling ~42MB. The app's UI is
+# English-only, so the rest are dead weight in every download. Add locales
+# here if the interface is ever translated — dropping one the UI needs
+# silently falls back to English rather than failing loudly.
+electronLanguages:
+  - en-US
+
+# Trades build time for download size. Worth it on an artifact users fetch
+# over the network far more often than we build it.
+compression: maximum
+
 # --- Linux ----------------------------------------------------------------
 # AppImage runs on any distro without installation; deb suits Debian/Ubuntu,
 # which covers most of the desktop Linux audience between them.
