@@ -11,7 +11,13 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
-from app.dependencies import AuthenticatedUser, authenticate, get_control_plane, get_llm_engine  # noqa: E402
+from app.dependencies import (  # noqa: E402
+    AuthenticatedUser,
+    authenticate,
+    get_control_plane,
+    get_embedder,
+    get_llm_engine,
+)
 from app.main import app  # noqa: E402
 from app.services.llm import _clean_sql  # noqa: E402
 
@@ -35,6 +41,10 @@ class FakeLlm:
         self.responses: list[str | Exception] = []
         self.translate_calls: list[dict] = []
         self.repair_calls: list[dict] = []
+        self.link_calls: list[dict] = []
+        # Replayed by `link_schema`; defaults to selecting nothing so a test
+        # that does not care about linking gets a predictable empty result.
+        self.link_responses: list[list[str] | Exception] = []
 
     def _next(self) -> str:
         if not self.responses:
@@ -52,6 +62,36 @@ class FakeLlm:
         self.repair_calls.append(kwargs)
         return _clean_sql(self._next())
 
+    async def link_schema(self, question: str, catalog: list[str], known: list[str]) -> list[str]:
+        self.link_calls.append({"question": question, "catalog": catalog, "known": known})
+        if not self.link_responses:
+            return []
+        value = self.link_responses.pop(0)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+
+
+class FakeEmbedder:
+    """
+    Stands in for the Hugging Face Inference API. Records what it was asked
+    so tests can assert on exactly what text would have left the tier.
+    """
+
+    model = "fake-embedding-model"
+    enabled = True
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+        self.error: Exception | None = None
+
+    async def embed(self, texts: list[str], *, is_query: bool = False) -> list[list[float]]:
+        self.calls.append({"texts": texts, "is_query": is_query})
+        if self.error:
+            raise self.error
+        # Unit vectors — shape is what the routes care about, not direction.
+        return [[1.0, 0.0, 0.0] for _ in texts]
 
 
 class FakeControlPlane:
@@ -80,14 +120,20 @@ def fake_control_plane() -> FakeControlPlane:
 
 
 @pytest.fixture
+def fake_embedder() -> FakeEmbedder:
+    return FakeEmbedder()
+
+
+@pytest.fixture
 def settings():
     return get_settings()
 
 
 @pytest.fixture
-def client(fake_llm: FakeLlm, fake_control_plane: FakeControlPlane):
+def client(fake_llm: FakeLlm, fake_control_plane: FakeControlPlane, fake_embedder: FakeEmbedder):
     app.dependency_overrides[get_llm_engine] = lambda: fake_llm
     app.dependency_overrides[get_control_plane] = lambda: fake_control_plane
+    app.dependency_overrides[get_embedder] = lambda: fake_embedder
     app.dependency_overrides[authenticate] = lambda: AuthenticatedUser(user_id="user-1")
     with TestClient(app) as test_client:
         yield test_client
@@ -95,11 +141,12 @@ def client(fake_llm: FakeLlm, fake_control_plane: FakeControlPlane):
 
 
 @pytest.fixture
-def unauthenticated_client(fake_llm: FakeLlm, fake_control_plane: FakeControlPlane):
+def unauthenticated_client(fake_llm: FakeLlm, fake_control_plane: FakeControlPlane, fake_embedder: FakeEmbedder):
     """Leaves the real `authenticate` dependency in place so header handling
     and control-plane rejection paths are exercised for real."""
     app.dependency_overrides[get_llm_engine] = lambda: fake_llm
     app.dependency_overrides[get_control_plane] = lambda: fake_control_plane
+    app.dependency_overrides[get_embedder] = lambda: fake_embedder
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

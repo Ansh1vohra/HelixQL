@@ -20,11 +20,13 @@ from app.config import Settings
 from app.errors import LlmUnavailableError, TranslationError
 from app.services.prompts import (
     REPAIR_SYSTEM_INSTRUCTION,
+    SCHEMA_LINKER_SYSTEM_INSTRUCTION,
     TRANSLATOR_SYSTEM_INSTRUCTION,
     build_repair_prompt,
+    build_schema_link_prompt,
     build_translation_prompt,
 )
-from app.services.sql_output import clean_sql
+from app.services.sql_output import clean_sql, parse_table_list
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +135,13 @@ class GroqSynthesisEngine:
             build_repair_prompt(question, schema_ddl, failed_sql, error, attempt),
         )
         return clean_sql(raw)
+
+    async def link_schema(self, question: str, catalog: list[str], known: list[str]) -> list[str]:
+        raw = await self._call_model(
+            SCHEMA_LINKER_SYSTEM_INSTRUCTION,
+            build_schema_link_prompt(question, catalog),
+        )
+        return parse_table_list(raw, known)
 
     async def aclose(self) -> None:
         await self._http.aclose()

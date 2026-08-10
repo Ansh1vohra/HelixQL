@@ -24,9 +24,78 @@ def test_no_summarize_endpoint_exists():
     assert "/v1/summarize" not in route_paths()
 
 
-def test_the_only_data_routes_are_translate_and_validate():
-    """A new route that accepts rows would show up here first."""
-    assert {path for path in route_paths() if path.startswith("/v1/")} == {"/v1/translate", "/v1/validate"}
+def test_the_route_surface_is_exactly_what_is_expected():
+    """A new route that accepts rows would show up here first.
+
+    `/v1/embed` and `/v1/link-schema` were added for schema selection. Both
+    widen the surface, so the tests below hold them to the same standard as
+    translate and validate: identifier and question text in, no field in
+    either schema that could carry a row.
+    """
+    assert {path for path in route_paths() if path.startswith("/v1/")} == {
+        "/v1/translate",
+        "/v1/validate",
+        "/v1/embed",
+        "/v1/link-schema",
+    }
+
+
+def test_link_schema_accepts_no_field_that_could_carry_rows():
+    from app.schemas import LinkSchemaRequest
+
+    assert set(LinkSchemaRequest.model_fields) == {"question", "catalog"}
+
+
+def test_link_schema_ignores_a_payload_carrying_rows(client, fake_llm):
+    response = client.post(
+        "/v1/link-schema",
+        json={
+            "question": "how many users",
+            "catalog": ["signup(id, email)"],
+            "rows": [{"name": "Asha", "email": "asha@example.com"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Asha" not in str(fake_llm.link_calls)
+    assert "asha@example.com" not in str(fake_llm.link_calls)
+
+
+def test_embed_accepts_no_field_that_could_carry_rows():
+    """The request schema is the enforcement point — a field that took
+    structured data is what a leak would need, and there isn't one."""
+    from app.schemas import EmbedRequest
+
+    assert set(EmbedRequest.model_fields) == {"texts", "is_query"}
+
+
+def test_embed_ignores_a_payload_carrying_rows(client, fake_embedder):
+    response = client.post(
+        "/v1/embed",
+        json={
+            "texts": ["Table signup. Columns: id, email."],
+            "rows": [{"name": "Asha", "email": "asha@example.com"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Asha" not in str(fake_embedder.calls)
+    assert "asha@example.com" not in str(fake_embedder.calls)
+
+
+def test_embed_returns_vectors_not_text(client):
+    """Nothing in the response echoes the input back, so the route cannot be
+    used as a round-trip channel for content."""
+    response = client.post("/v1/embed", json={"texts": ["Table signup."]})
+
+    body = response.json()
+    assert set(body) == {"vectors", "model", "dimensions"}
+    assert "signup" not in str(body)
+
+
+def test_embed_requires_authentication(unauthenticated_client):
+    response = unauthenticated_client.post("/v1/embed", json={"texts": ["Table signup."]})
+    assert response.status_code == 401
 
 
 def test_translate_rejects_a_payload_carrying_rows(client):

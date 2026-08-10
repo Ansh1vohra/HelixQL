@@ -91,3 +91,17 @@ class LlmUnavailableError(GatewayError):
 
     status_code = 503
     code = "LLM_UNAVAILABLE"
+
+
+class EmbeddingUnavailableError(GatewayError):
+    """
+    Semantic schema matching could not run — no HF_TOKEN, or the embedding
+    API errored, timed out, or was rate limited.
+
+    Never fatal to a query. The desktop client treats this as a signal to
+    fall back to lexical-only pruning, so a question still gets answered
+    (just with weaker table ranking) when embeddings are down.
+    """
+
+    status_code = 503
+    code = "EMBEDDINGS_UNAVAILABLE"

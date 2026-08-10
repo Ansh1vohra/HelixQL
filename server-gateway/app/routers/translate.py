@@ -5,6 +5,8 @@ from fastapi import APIRouter
 from app.dependencies import ControlPlaneDep, CurrentUser, LlmDep, SettingsDep
 from app.errors import QueryLimitExceededError
 from app.schemas import (
+    LinkSchemaRequest,
+    LinkSchemaResponse,
     TranslateRequest,
     TranslateResponse,
     UsageInfo,
@@ -95,6 +97,56 @@ async def translate(
         limit_applied=result.limit_applied,
         usage=usage,
     )
+
+
+def _catalog_names(catalog: list[str]) -> list[str]:
+    """
+    Recover the table name from each catalog line (`name(col, col)`).
+
+    This list is what the model's reply is validated against, so a name that
+    cannot be recovered here can never be selected — failing closed is the
+    right direction for the one check that stops a hallucinated table.
+    """
+    names = []
+    for entry in catalog:
+        name = entry.split("(", 1)[0].strip()
+        if name:
+            names.append(name)
+    return names
+
+
+@router.post("/link-schema", response_model=LinkSchemaResponse)
+async def link_schema(payload: LinkSchemaRequest, user: CurrentUser, llm: LlmDep) -> LinkSchemaResponse:
+    """
+    Pick the tables a question needs, by reading what each table stores.
+
+    This exists because neither keyword matching nor embeddings can tell
+    that a table called `signup` is where users live while `ai_user_events`
+    is an unrelated log — both rank the decoy higher, because for short
+    identifiers both are ultimately driven by literal token overlap. A model
+    reading the columns gets it right.
+
+    Authenticated but **not metered**, on the same reasoning as `/v1/embed`:
+    a user's allowance counts questions answered, and this runs in service
+    of a translation that is already metered. Charging twice for one
+    question would make the accurate path the expensive one. The catalog
+    size caps in `LinkSchemaRequest` bound the cost instead.
+
+    Selection is advisory. The client falls back to local lexical pruning if
+    this fails, and the returned names are filtered against the submitted
+    catalog so nothing invented reaches the blueprint.
+    """
+    known = _catalog_names(payload.catalog)
+    tables = await llm.link_schema(payload.question, payload.catalog, known)
+
+    logger.info(
+        "link_schema user=%s catalog=%s selected=%s",
+        user.user_id,
+        len(known),
+        ",".join(tables) or "-",
+    )
+
+    return LinkSchemaResponse(tables=tables)
 
 
 @router.post("/validate", response_model=ValidateResponse)

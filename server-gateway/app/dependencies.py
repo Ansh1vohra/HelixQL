@@ -6,6 +6,7 @@ from fastapi import Depends, Header, Request
 from app.clients.control_plane import ControlPlaneClient
 from app.config import Settings, get_settings
 from app.errors import InvalidTokenError
+from app.services.embeddings import HuggingFaceEmbedder
 from app.services.llm import GeminiSynthesisEngine
 
 API_TOKEN_HEADER = "X-API-Token"
@@ -22,6 +23,10 @@ def get_control_plane(request: Request) -> ControlPlaneClient:
 
 def get_llm_engine(request: Request) -> GeminiSynthesisEngine:
     return request.app.state.llm
+
+
+def get_embedder(request: Request) -> HuggingFaceEmbedder:
+    return request.app.state.embedder
 
 
 def get_config() -> Settings:
@@ -56,4 +61,5 @@ async def authenticate(
 CurrentUser = Annotated[AuthenticatedUser, Depends(authenticate)]
 ControlPlaneDep = Annotated[ControlPlaneClient, Depends(get_control_plane)]
 LlmDep = Annotated[GeminiSynthesisEngine, Depends(get_llm_engine)]
+EmbedderDep = Annotated[HuggingFaceEmbedder, Depends(get_embedder)]
 SettingsDep = Annotated[Settings, Depends(get_config)]

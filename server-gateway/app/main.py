@@ -11,7 +11,8 @@ from fastapi.responses import JSONResponse
 from app.clients.control_plane import ControlPlaneClient
 from app.config import get_settings
 from app.errors import GatewayError
-from app.routers import translate
+from app.routers import embeddings, translate
+from app.services.embeddings import create_embedder
 from app.services.llm import create_engine
 
 logger = logging.getLogger(__name__)
@@ -37,16 +38,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.http = http
     app.state.control_plane = ControlPlaneClient(http, settings)
     app.state.llm = create_engine(settings)
+    app.state.embedder = create_embedder(settings)
 
     logger.info(
-        "HelixQL gateway ready (provider=%s, control_plane=%s)",
+        "HelixQL gateway ready (provider=%s, embeddings=%s, control_plane=%s)",
         settings.llm_provider,
+        settings.embedding_model if settings.embeddings_enabled else "disabled",
         settings.control_plane_base_url,
     )
     try:
         yield
     finally:
         await http.aclose()
+        await app.state.embedder.aclose()
 
 
 app = FastAPI(
@@ -91,3 +95,4 @@ def health() -> dict[str, str]:
 
 
 app.include_router(translate.router)
+app.include_router(embeddings.router)

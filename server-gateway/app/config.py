@@ -65,6 +65,30 @@ class Settings(BaseSettings):
         if self.llm_provider == "groq" and not self.groq_api_key.strip():
             raise ValueError("GROQ_API_KEY is required when LLM_PROVIDER=groq")
 
+    # Hugging Face Inference API — powers semantic schema matching (see
+    # `services/embeddings.py`). Deliberately *not* required: with no token
+    # the embed route reports itself unavailable and the desktop client
+    # falls back to pure lexical pruning, which is how the system behaved
+    # before embeddings existed. A missing token degrades the ranking, it
+    # never breaks a query.
+    hf_token: str = ""
+    # bge-small-en-v1.5: 384 dimensions, ~130MB, and near the top of MTEB
+    # retrieval for its size class. The task here is short-text ("signup"
+    # vs "how many users"), so a small retrieval-tuned model beats a large
+    # general one at a fraction of the latency.
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_base_url: str = "https://router.huggingface.co/hf-inference/models"
+    embedding_timeout_seconds: float = 30.0
+    # One request carries every table in a schema. 200 covers databases far
+    # larger than the desktop client will practically introspect, while
+    # still bounding what a single call can cost us upstream.
+    embedding_max_texts: int = 200
+    embedding_max_chars: int = 2_000
+
+    @property
+    def embeddings_enabled(self) -> bool:
+        return bool(self.hf_token.strip())
+
     # The control plane's /api/internal/* endpoints this gateway calls to
     # validate api_tokens and meter usage, instead of querying MongoDB
     # directly (see the Phase 1 architecture note on why).

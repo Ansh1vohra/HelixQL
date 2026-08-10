@@ -30,6 +30,16 @@ export interface ValidateResponse {
   limit_applied: number | null;
 }
 
+export interface EmbedResponse {
+  vectors: number[][];
+  model: string;
+  dimensions: number;
+}
+
+export interface LinkSchemaResponse {
+  tables: string[];
+}
+
 interface GatewayErrorBody {
   error?: string;
   code?: string;
@@ -90,4 +100,30 @@ export function translate(options: TranslateOptions): Promise<TranslateResponse>
  */
 export function validate(sql: string, dialect: Dialect): Promise<ValidateResponse> {
   return post<ValidateResponse>("/v1/validate", { sql, dialect });
+}
+
+/**
+ * Embeds identifier text for semantic schema matching.
+ *
+ * What crosses the wire here is table and column *names* — the same class
+ * of content `translate` already sends, and never a row. The schema half is
+ * embedded once per connection and cached locally (see `db/embeddings.ts`),
+ * so the recurring per-question cost is the question text alone.
+ *
+ * Not metered by the gateway: one question already spends one translation,
+ * and charging again for the ranking step would penalize the accurate path.
+ */
+export function embed(texts: string[], isQuery: boolean): Promise<EmbedResponse> {
+  return post<EmbedResponse>("/v1/embed", { texts, is_query: isQuery });
+}
+
+/**
+ * Asks the model which tables a question needs, given a compact catalog of
+ * table and column names.
+ *
+ * Sends the same class of content as `translate` — identifiers, never rows.
+ * Not metered: it runs in service of a translation that already is.
+ */
+export function linkSchema(question: string, catalog: string[]): Promise<LinkSchemaResponse> {
+  return post<LinkSchemaResponse>("/v1/link-schema", { question, catalog });
 }

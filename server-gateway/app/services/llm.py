@@ -18,11 +18,13 @@ from app.config import Settings
 from app.errors import LlmUnavailableError, TranslationError
 from app.services.prompts import (
     REPAIR_SYSTEM_INSTRUCTION,
+    SCHEMA_LINKER_SYSTEM_INSTRUCTION,
     TRANSLATOR_SYSTEM_INSTRUCTION,
     build_repair_prompt,
+    build_schema_link_prompt,
     build_translation_prompt,
 )
-from app.services.sql_output import clean_sql, strip_code_fences
+from app.services.sql_output import clean_sql, parse_table_list, strip_code_fences
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +166,12 @@ class GeminiSynthesisEngine:
         )
         return _clean_sql(raw)
 
+    async def link_schema(self, question: str, catalog: list[str], known: list[str]) -> list[str]:
+        # A table list is a handful of tokens; capping output here keeps a
+        # model that decides to explain itself from burning the budget.
+        config = self._config(SCHEMA_LINKER_SYSTEM_INSTRUCTION, max_output_tokens=256)
+        raw = await self._call_model(build_schema_link_prompt(question, catalog), config)
+        return parse_table_list(raw, known)
 
 
 # --- Provider selection ---------------------------------------------------
@@ -187,6 +195,8 @@ class SynthesisEngine(Protocol):
         error: str,
         attempt: int,
     ) -> str: ...
+
+    async def link_schema(self, question: str, catalog: list[str], known: list[str]) -> list[str]: ...
 
 
 def create_engine(settings: Settings) -> SynthesisEngine:

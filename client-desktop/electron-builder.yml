@@ -1,0 +1,103 @@
+# Packaging configuration for the HelixQL desktop client.
+#
+# `electron-vite build` compiles src/ into out/; electron-builder takes out/
+# plus the production dependencies and produces the installers users
+# download. The two steps are chained by the build:* scripts in package.json.
+#
+# Note on dependencies: electron.vite.config.ts uses externalizeDepsPlugin()
+# for the main process, so `mysql2` and `pg` are NOT bundled into out/ — they
+# are resolved from node_modules at runtime. electron-builder ships anything
+# listed under "dependencies" (not devDependencies) automatically, which is
+# what makes that work. Moving either driver to devDependencies would produce
+# an app that builds cleanly and then fails to connect to any database.
+
+appId: com.helixql.desktop
+productName: HelixQL
+copyright: Copyright © 2026 HelixQL
+
+directories:
+  # Where icon.png lives, and where entitlements/ would go for macOS signing.
+  buildResources: build
+  output: dist
+
+files:
+  - out/**
+  - package.json
+  # Source and tooling are excluded — the compiled output in out/ is the
+  # only code the shipped app runs.
+  - "!src/*"
+  - "!tests/*"
+  - "!electron.vite.config.{js,ts,mjs,cjs}"
+  - "!vitest.config.{js,ts,mjs,cjs}"
+  - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
+  - "!{.eslintrc.cjs,.eslintignore,eslint.config.js}"
+  - "!{postcss.config.js,tailwind.config.js}"
+  - "!{.env,.env.*}"
+
+# Bundles app code into an archive. Not a security boundary — asar is
+# trivially unpacked — so it changes nothing about where credentials live.
+# They stay in main-process memory and are never written to disk regardless.
+asar: true
+
+# --- Linux ----------------------------------------------------------------
+# AppImage runs on any distro without installation; deb suits Debian/Ubuntu,
+# which covers most of the desktop Linux audience between them.
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  maintainer: HelixQL
+  synopsis: Ask your database questions in plain English
+  # Derived from the package name by default, which here is the scoped
+  # "@helixql/client-desktop" — not a legal file name, and the AppImage
+  # target refuses to build without this override.
+  executableName: helixql
+  # Without this the artifact is named from the scoped package name and the
+  # "/" in "@helixql/client-desktop" is read as a directory separator.
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # Lets desktop environments associate the running window with the
+  # installed launcher (via desktopName in package.json), so the app shows
+  # its own name and icon in the dock rather than a generic Electron entry.
+  syncDesktopName: true
+  desktop:
+    entry:
+      Name: HelixQL
+      Categories: Development;Database;
+
+# --- Windows --------------------------------------------------------------
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Unsigned builds trigger a SmartScreen warning on download. Set
+  # CSC_LINK / CSC_KEY_PASSWORD in the build environment to sign.
+  artifactName: ${productName}-${version}-setup.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+# --- macOS ----------------------------------------------------------------
+# Cannot be produced on Linux or Windows — Apple's toolchain is macOS-only.
+# Build these on a Mac (or a macOS CI runner); see the notes in the README
+# section of this repo for signing and notarization.
+mac:
+  target:
+    - target: dmg
+      # Apple Silicon and Intel. Universal binaries double the download for
+      # no benefit here, so two artifacts are shipped instead.
+      arch: [arm64, x64]
+  category: public.app-category.developer-tools
+  # Required for notarization. Without a Developer ID certificate the app is
+  # still built, but Gatekeeper will refuse to open it on other people's
+  # machines.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}

@@ -78,6 +78,52 @@ If the schema makes the question unanswerable, output a single line:
 {UNANSWERABLE_SENTINEL} <short reason>
 """
 
+SCHEMA_LINKER_SYSTEM_INSTRUCTION = """\
+You are HelixQL's schema linker. Given a catalog of database tables and one
+business question, you select the tables needed to answer it.
+
+You exist because table names rarely match how people speak. A table called
+`signup` may be where users live; a table called `ai_user_events` may be an
+unrelated telemetry log despite containing the word "user". Judge each table
+by what its columns show it actually stores, not by whether its name shares
+words with the question.
+
+OUTPUT CONTRACT — violating this breaks the calling program:
+- Output only table names from the catalog, comma-separated, on one line.
+- Copy each name exactly as the catalog spells it.
+- No prose, no explanation, no markdown, no numbering.
+- Never output a name that is not in the catalog.
+
+SELECTION RULES:
+- Include every table needed to answer, including ones needed only to join
+  through or to resolve a name the question refers to indirectly.
+- Prefer the table that stores the entity itself over a log, audit, event,
+  or staging table about that entity.
+- Do not pad the list. A table that contributes nothing to the answer costs
+  accuracy downstream.
+- If nothing in the catalog can answer the question, output NONE.
+"""
+
+
+def build_schema_link_prompt(question: str, catalog: list[str]) -> str:
+    """
+    Assemble the schema-linking turn: a compact catalog plus the question.
+
+    The catalog is one line per table — name and column names only, no
+    types, keys, or row data. Types are omitted deliberately: they cost
+    tokens on every table and carry almost no signal about which table a
+    question is *about*, which is the only judgement being made here.
+    """
+    listing = "\n".join(catalog)
+    return f"""CATALOG:
+{listing}
+
+QUESTION:
+{question}
+
+TABLES:"""
+
+
 def build_translation_prompt(question: str, schema_ddl: list[str]) -> str:
     """
     Assemble the user-turn payload: the pruned schema blueprint plus the

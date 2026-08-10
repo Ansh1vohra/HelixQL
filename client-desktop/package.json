@@ -2,6 +2,11 @@
   "name": "@helixql/client-desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Ask your database questions in plain English",
+  "author": "HelixQL",
+  "desktopName": "helixql.desktop",
+  "//homepage": "PLACEHOLDER — replace with the real site before publishing. Required by the .deb target and embedded in the package metadata users can inspect.",
+  "homepage": "https://helixql.com",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

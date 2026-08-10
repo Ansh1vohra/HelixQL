@@ -20,6 +20,36 @@ def strip_code_fences(text: str) -> str:
     return (match.group("body") if match else text).strip()
 
 
+def parse_table_list(text: str, known: list[str]) -> list[str]:
+    """
+    Turn the schema linker's reply into a validated list of table names.
+
+    Every returned name is matched back against `known` and anything else is
+    dropped. That check is not defensive politeness — it is the only thing
+    standing between a hallucinated table name and a schema blueprint built
+    around a table that does not exist. Matching is case-insensitive but the
+    catalog's own spelling is what comes back, so the caller can look each
+    name up directly.
+
+    Order follows the catalog rather than the model's reply, so the same
+    selection always produces the same blueprint.
+    """
+    body = strip_code_fences(text)
+    if body.strip().upper() == "NONE":
+        return []
+
+    # Models occasionally answer with a bulleted or newline-separated list
+    # despite the one-line instruction; treat both separators as equivalent.
+    candidates = {
+        part.strip().strip("`\"'").lstrip("-*0123456789. ").strip().lower()
+        for chunk in body.replace("\n", ",").split(",")
+        for part in [chunk]
+        if part.strip()
+    }
+
+    return [name for name in known if name.lower() in candidates]
+
+
 def clean_sql(text: str) -> str:
     sql = strip_code_fences(text)
     if sql.startswith(UNANSWERABLE_SENTINEL):

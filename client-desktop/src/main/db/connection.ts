@@ -1,6 +1,7 @@
 import type { ConnectionConfig, ConnectionStatus, SchemaBlueprint } from "../../shared/types";
 import { AppError } from "../errors";
 import { createDriver, type Driver } from "./driver";
+import { clearEmbeddingCache } from "./embeddings";
 
 interface ActiveConnection {
   config: ConnectionConfig;
@@ -109,5 +110,9 @@ export async function disconnect(): Promise<ConnectionStatus> {
     await active.driver.close().catch(() => undefined);
     active = null;
   }
+  // Schema vectors are scoped to the database that produced them; leaving
+  // them cached would let the next connection score against the last one's
+  // layout.
+  clearEmbeddingCache();
   return { connected: false };
 }

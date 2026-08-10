@@ -8,6 +8,8 @@ import type {
 import { MAX_REPAIR_ATTEMPTS } from "./config";
 import { getBlueprint, requireActive } from "./db/connection";
 import { blueprintFor } from "./db/ddl";
+import { semanticScores } from "./db/embeddings";
+import { linkSchema } from "./db/linker";
 import { pruneSchema } from "./db/rag";
 import { AppError } from "./errors";
 import * as gateway from "./gateway";
@@ -43,9 +45,27 @@ export async function runPipeline(request: PipelineRequest, emit: Emit): Promise
   const schemaStart = Date.now();
   emit({ step: "pruning", message: "Matching your question against the local schema…" });
 
-  const pruned = pruneSchema(blueprint, question);
-  const schemaDdl = blueprintFor(pruned.tables);
-  const schemaTablesSent = pruned.tables.map((table) => table.name);
+  // Table selection runs three tiers deep, each one a fallback for the one
+  // above. The order is by accuracy; every tier is optional except the last,
+  // which is local and always works.
+  //
+  //   1. Schema linking — a model reads the columns and picks. Handles the
+  //      case the other two provably cannot: a table whose name misleads
+  //      (`signup` holding users while `ai_user_events` is a log).
+  //   2. Embeddings — rank by meaning. Used to prefilter a large schema down
+  //      to a catalog the linker can read, and to rank if linking is down.
+  //   3. Keyword matching — exact, local, offline, always available.
+  //
+  // Nothing here can fail the question: an unreachable gateway or an unset
+  // HF_TOKEN costs accuracy and falls through to tier 3.
+  const semantic = await semanticScores(blueprint, question);
+  const linked = await linkSchema(blueprint, question, semantic?.scores);
+
+  const pruned = linked ? null : pruneSchema(blueprint, question, semantic?.scores);
+  const tables = linked ? linked.tables : pruned!.tables;
+
+  const schemaDdl = blueprintFor(tables);
+  const schemaTablesSent = tables.map((table) => table.name);
 
   if (schemaDdl.length === 0) {
     throw new AppError(
@@ -54,12 +74,21 @@ export async function runPipeline(request: PipelineRequest, emit: Emit): Promise
     );
   }
 
+  const ranking = linked
+    ? linked.prefiltered
+      ? "model-selected from a shortlist"
+      : "model-selected"
+    : pruned!.usedSemantic
+      ? "semantic + keyword match"
+      : "keyword match";
+
   emit({
     step: "pruning",
-    message: `Sending ${schemaDdl.length} of ${blueprint.tables.length} table structures`,
-    detail: pruned.usedFallback
-      ? `No table name matched the question, so the first ${schemaDdl.length} were used: ${schemaTablesSent.join(", ")}`
-      : schemaTablesSent.join(", "),
+    message: `Sending ${schemaDdl.length} of ${blueprint.tables.length} table structures (${ranking})`,
+    detail:
+      pruned?.usedFallback
+        ? `Nothing in the schema matched the question, so the first ${schemaDdl.length} were used: ${schemaTablesSent.join(", ")}`
+        : schemaTablesSent.join(", "),
   });
   const schemaMs = Date.now() - schemaStart;
 

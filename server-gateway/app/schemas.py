@@ -71,3 +71,74 @@ class ValidateResponse(BaseModel):
     sql: str
     tables: list[str]
     limit_applied: int | None = None
+
+
+class LinkSchemaRequest(BaseModel):
+    """
+    Schema-linking input: a compact table catalog plus the question.
+
+    Each catalog entry is one line of the form `name(col, col, ...)` — table
+    and column *names* only. Same content class as `schema_ddl`, minus the
+    types and keys, because picking which tables a question is about does
+    not need them.
+    """
+
+    question: str = Field(min_length=1, max_length=2_000)
+    catalog: list[str] = Field(min_length=1, max_length=300)
+
+    @field_validator("question")
+    @classmethod
+    def _reject_blank_question(cls, value: str) -> str:
+        # `min_length` counts whitespace, so a question of spaces would
+        # otherwise reach the model and spend a call answering nothing.
+        if not value.strip():
+            raise ValueError("question must not be blank")
+        return value
+
+    @field_validator("catalog")
+    @classmethod
+    def _reject_oversized_catalog(cls, value: list[str]) -> list[str]:
+        for entry in value:
+            if not entry.strip():
+                raise ValueError("catalog entries must not be empty")
+            if len(entry) > 4_000:
+                raise ValueError("catalog entries must be 4000 characters or fewer")
+        return value
+
+
+class LinkSchemaResponse(BaseModel):
+    # Always a subset of the submitted catalog — names the model invented are
+    # dropped before they reach the client (see `parse_table_list`).
+    tables: list[str]
+
+
+class EmbedRequest(BaseModel):
+    """
+    Text to embed for semantic schema matching (see `services/embeddings.py`).
+
+    Carries identifier names and question text only — the same class of
+    content already covered by `TranslateRequest`. There is deliberately no
+    field here that could hold row data.
+    """
+
+    texts: list[str] = Field(min_length=1, max_length=200)
+    # Selects BGE's asymmetric prefix: true for the user's question, false
+    # for the table descriptions being indexed.
+    is_query: bool = False
+
+    @field_validator("texts")
+    @classmethod
+    def _reject_empty_texts(cls, value: list[str]) -> list[str]:
+        for text in value:
+            if not text.strip():
+                raise ValueError("texts entries must not be empty")
+            if len(text) > 2_000:
+                raise ValueError("texts entries must be 2000 characters or fewer")
+        return value
+
+
+class EmbedResponse(BaseModel):
+    # L2-normalized, so the client scores similarity with a dot product.
+    vectors: list[list[float]]
+    model: str
+    dimensions: int
