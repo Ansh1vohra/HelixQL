@@ -27,7 +27,7 @@ services:
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
+        value: openai/gpt-oss-120b
 
       # --- Semantic schema matching (optional) ---
       # Leave unset and the gateway logs a warning and falls back to lexical

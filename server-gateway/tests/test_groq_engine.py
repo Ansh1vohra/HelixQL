@@ -52,7 +52,7 @@ async def test_pins_temperature_to_zero_for_determinism():
 
     payload = json.loads(seen[0].content)
     assert payload["temperature"] == 0.0
-    assert payload["model"] == "llama-3.3-70b-versatile"
+    assert payload["model"] == "openai/gpt-oss-120b"
     # System instruction first, then the schema + question turn.
     assert payload["messages"][0]["role"] == "system"
     assert "HelixQL" in payload["messages"][0]["content"]

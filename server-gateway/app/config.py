@@ -49,7 +49,10 @@ class Settings(BaseSettings):
 
     # Groq — OpenAI-compatible chat completions API.
     groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
+    # Groq decommissions models on a rolling basis and returns a 404
+    # `model_not_found` once one is retired — check the live list at
+    # https://console.groq.com/docs/deprecations before pinning a new one.
+    groq_model: str = "openai/gpt-oss-120b"
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_temperature: float = 0.0
     groq_timeout_seconds: float = 45.0
