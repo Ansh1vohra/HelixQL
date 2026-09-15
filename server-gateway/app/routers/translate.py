@@ -14,6 +14,7 @@ from app.schemas import (
     ValidateResponse,
 )
 from app.services.guardrail import validate_sql
+from app.services.text_matching import fold_text_comparisons
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,11 @@ async def translate(
         )
         attempt = 1
 
+    # The model cannot see how values are capitalized, so "gujarat" would
+    # miss "Gujarat". Folded before the guardrail, so the guardrail inspects
+    # the SQL that actually runs.
+    raw_sql, folded = fold_text_comparisons(raw_sql, payload.dialect, payload.schema_ddl)
+
     # Nothing the model produced reaches the client un-inspected.
     result = validate_sql(raw_sql, payload.dialect, max_rows=settings.max_result_rows)
 
@@ -95,6 +101,7 @@ async def translate(
         attempt=attempt,
         tables=result.tables,
         limit_applied=result.limit_applied,
+        case_insensitive_columns=folded,
         usage=usage,
     )
 

@@ -21,6 +21,7 @@ export interface TranslateResponse {
   attempt: number;
   tables: string[];
   limit_applied: number | null;
+  case_insensitive_columns?: string[];
   usage: { remaining: number; monthly_query_limit: number } | null;
 }
 

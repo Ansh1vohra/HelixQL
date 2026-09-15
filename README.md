@@ -46,15 +46,27 @@ You also need a MongoDB (Atlas connection string, or `docker run -d -p
 
 ### A database to query
 
-If you don't already have one handy:
+If you don't already have one handy, `scripts/sample_db.py` generates a
+15-table e-commerce database (~2,000 customers, ~10,000 orders, payments,
+shipments, returns, reviews, inventory) with identical rows for either
+dialect. Pipe it straight in:
 
 ```bash
+# PostgreSQL
 docker run -d --name helixql-postgres -e POSTGRES_PASSWORD=helix \
   -e POSTGRES_USER=helix -e POSTGRES_DB=shopdb -p 55432:5432 postgres:16
-docker exec -i helixql-postgres psql -U helix -d shopdb < scripts/sample-db.sql
+python3 scripts/sample_db.py postgres | docker exec -i helixql-postgres psql -q -U helix -d shopdb
+
+# MySQL 8
+docker run -d --name helixql-mysql -e MYSQL_ROOT_PASSWORD=helix \
+  -e MYSQL_DATABASE=shopdb -e MYSQL_USER=helix -e MYSQL_PASSWORD=helix \
+  -p 33306:3306 mysql:8
+python3 scripts/sample_db.py mysql | docker exec -i helixql-mysql mysql -uhelix -phelix shopdb
 ```
 
-Port 55432 avoids colliding with a PostgreSQL already running on your host.
+Ports 55432 / 33306 avoid colliding with a database already running on your
+host. `--scale 5` makes it five times larger; dates end at today unless you
+pass `--anchor YYYY-MM-DD`.
 
 ### Start everything
 

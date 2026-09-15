@@ -33,6 +33,9 @@ export function DiagnosticsPanel({ result }: { result: PipelineResult | null }):
         <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
           <span>tables: {result.tables.join(", ") || "—"}</span>
           {result.limitApplied !== null && <span>row cap applied: {result.limitApplied}</span>}
+          {result.caseInsensitiveColumns.length > 0 && (
+            <span>case-insensitive match: {result.caseInsensitiveColumns.join(", ")}</span>
+          )}
           {result.attempts > 1 && <span className="text-amber-600">self-healed after {result.attempts} attempts</span>}
         </div>
       </div>

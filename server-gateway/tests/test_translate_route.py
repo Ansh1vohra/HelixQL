@@ -148,3 +148,31 @@ def test_accepts_a_bearer_token(unauthenticated_client):
 
 def test_health_endpoint(client):
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_text_filters_ignore_case_on_postgres(client, fake_llm):
+    fake_llm.responses = ["SELECT COUNT(*) FROM users WHERE state = 'Gujarat'"]
+
+    body = client.post(
+        "/v1/translate",
+        json=_payload(dialect="postgres", schema_ddl=["CREATE TABLE users (\n  id INTEGER NOT NULL,\n  state CHARACTER VARYING(50)\n);"]),
+    ).json()
+
+    assert "LOWER(state) = 'gujarat'" in body["sql"]
+    assert body["case_insensitive_columns"] == ["users.state"]
+
+
+def test_text_filters_are_left_alone_on_a_case_insensitive_mysql_collation(client, fake_llm):
+    fake_llm.responses = ["SELECT COUNT(*) FROM users WHERE state = 'gujarat'"]
+
+    body = client.post("/v1/translate", json=_payload()).json()
+
+    assert "LOWER" not in body["sql"]
+    assert body["case_insensitive_columns"] == []
+
+
+def test_manual_sql_is_never_case_folded(client):
+    body = client.post(
+        "/v1/validate", json={"sql": "SELECT id FROM users WHERE state = 'Gujarat'", "dialect": "postgres"}
+    ).json()
+    assert "LOWER" not in body["sql"]

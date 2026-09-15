@@ -92,6 +92,8 @@ export interface PipelineResult {
   attempts: number;
   tables: string[];
   limitApplied: number | null;
+  /** `table.column` names the gateway matched case-insensitively. */
+  caseInsensitiveColumns: string[];
   schemaTablesSent: string[];
   result: ResultGrid;
   rowCount: number;

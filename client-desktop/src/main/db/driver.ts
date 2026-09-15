@@ -109,7 +109,8 @@ class MySqlDriver implements Driver {
       const [columnRows] = await connection.query<mysql.RowDataPacket[]>(
         `SELECT c.TABLE_NAME   AS table_name,
                 c.COLUMN_NAME  AS column_name,
-                c.COLUMN_TYPE  AS data_type,
+                c.COLUMN_TYPE  AS column_type,
+                c.COLLATION_NAME AS collation_name,
                 c.IS_NULLABLE  AS is_nullable,
                 c.COLUMN_KEY   AS column_key
            FROM information_schema.COLUMNS c
@@ -131,7 +132,18 @@ class MySqlDriver implements Driver {
         [this.database],
       );
 
-      return assembleTables(columnRows, fkRows, (row) => String(row.column_key) === "PRI");
+      // A column's collation is appended to its type only when it is case-
+      // sensitive. The default `_ci` collations already match "gujarat" to
+      // "Gujarat", so marking them would spend blueprint tokens to say
+      // nothing; a `_bin` or `_cs` one tells the gateway a text filter
+      // there has to ignore case explicitly.
+      const withTypes = columnRows.map((row) => {
+        const collation = row.collation_name ? String(row.collation_name) : "";
+        const caseSensitive = collation !== "" && !collation.toLowerCase().endsWith("_ci");
+        return { ...row, data_type: caseSensitive ? `${row.column_type} COLLATE ${collation}` : row.column_type };
+      });
+
+      return assembleTables(withTypes, fkRows, (row) => String(row.column_key) === "PRI");
     });
   }
 

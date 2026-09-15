@@ -56,6 +56,10 @@ class TranslateResponse(BaseModel):
         default=None,
         description="Row cap the gateway injected, or null if the query carried its own LIMIT",
     )
+    # `table.column` names whose text comparisons were rewritten to ignore
+    # case (see `services/text_matching.py`), so the dashboard can say why
+    # the SQL has a LOWER() the model did not write.
+    case_insensitive_columns: list[str] = []
     usage: UsageInfo | None = None
 
 
