@@ -19,6 +19,8 @@ from app.dependencies import (  # noqa: E402
     get_llm_engine,
 )
 from app.main import app  # noqa: E402
+from app.schemas import ClarifyResponse  # noqa: E402
+from app.services.clarify_output import parse_clarification  # noqa: E402
 from app.services.llm import _clean_sql  # noqa: E402
 
 TEST_SCHEMA = ["CREATE TABLE users (id INT, name VARCHAR(100), state VARCHAR(50));"]
@@ -45,6 +47,8 @@ class FakeLlm:
         # Replayed by `link_schema`; defaults to selecting nothing so a test
         # that does not care about linking gets a predictable empty result.
         self.link_responses: list[list[str] | Exception] = []
+        self.clarify_calls: list[dict] = []
+        self.clarify_responses: list[str | Exception] = []
 
     def _next(self) -> str:
         if not self.responses:
@@ -70,6 +74,24 @@ class FakeLlm:
         if isinstance(value, Exception):
             raise value
         return value
+
+    async def clarify(
+        self,
+        question: str,
+        schema_ddl: list[str],
+        history: list[tuple[str, str]],
+        max_turns: int,
+    ) -> ClarifyResponse:
+        """Replays raw model text through the production parser, for the
+        same reason `translate` runs `_clean_sql`."""
+        self.clarify_calls.append(
+            {"question": question, "schema_ddl": schema_ddl, "history": history, "max_turns": max_turns}
+        )
+        raw = self.clarify_responses.pop(0) if self.clarify_responses else '{"status": "ready", "resolved_question": "q"}'
+        if isinstance(raw, Exception):
+            raise raw
+        turns_used = sum(1 for role, _ in history if role == "assistant")
+        return parse_clarification(raw, question, history, budget_spent=turns_used >= max_turns)
 
 
 

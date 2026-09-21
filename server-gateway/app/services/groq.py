@@ -18,10 +18,14 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from app.config import Settings
 from app.errors import LlmUnavailableError, TranslationError
+from app.schemas import ClarifyResponse
+from app.services.clarify_output import parse_clarification
 from app.services.prompts import (
+    CLARIFIER_SYSTEM_INSTRUCTION,
     REPAIR_SYSTEM_INSTRUCTION,
     SCHEMA_LINKER_SYSTEM_INSTRUCTION,
     TRANSLATOR_SYSTEM_INSTRUCTION,
+    build_clarify_prompt,
     build_repair_prompt,
     build_schema_link_prompt,
     build_translation_prompt,
@@ -142,6 +146,20 @@ class GroqSynthesisEngine:
             build_schema_link_prompt(question, catalog),
         )
         return parse_table_list(raw, known)
+
+    async def clarify(
+        self,
+        question: str,
+        schema_ddl: list[str],
+        history: list[tuple[str, str]],
+        max_turns: int,
+    ) -> ClarifyResponse:
+        turns_used = sum(1 for role, _ in history if role == "assistant")
+        raw = await self._call_model(
+            CLARIFIER_SYSTEM_INSTRUCTION,
+            build_clarify_prompt(question, schema_ddl, history, turns_used, max_turns),
+        )
+        return parse_clarification(raw, question, history, budget_spent=turns_used >= max_turns)
 
     async def aclose(self) -> None:
         await self._http.aclose()

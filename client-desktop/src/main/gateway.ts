@@ -1,4 +1,4 @@
-import type { Dialect } from "../shared/types";
+import type { ChatTurn, Dialect } from "../shared/types";
 import { getEndpoints } from "./config";
 import { AppError } from "./errors";
 import { requireApiToken } from "./session";
@@ -127,4 +127,24 @@ export function embed(texts: string[], isQuery: boolean): Promise<EmbedResponse>
  */
 export function linkSchema(question: string, catalog: string[]): Promise<LinkSchemaResponse> {
   return post<LinkSchemaResponse>("/v1/link-schema", { question, catalog });
+}
+
+export interface ClarifyResponse {
+  status: "ask" | "ready" | "unanswerable";
+  message: string;
+  options: string[];
+  resolved_question: string | null;
+  assumptions: string[];
+}
+
+/**
+ * One turn of agent talk: asks whether the question needs clarifying,
+ * given the pruned blueprint and the conversation so far.
+ *
+ * Sends the same class of content as `translate` — empty table structure
+ * and text the user typed. Not metered: it runs in service of the one
+ * translation the conversation ends in, and the gateway caps the turns.
+ */
+export function clarify(question: string, schemaDdl: string[], history: ChatTurn[]): Promise<ClarifyResponse> {
+  return post<ClarifyResponse>("/v1/clarify", { question, schema_ddl: schemaDdl, history });
 }

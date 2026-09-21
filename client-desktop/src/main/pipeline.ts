@@ -4,6 +4,7 @@ import type {
   PipelineResult,
   RepairRecord,
   ResultGrid,
+  SchemaBlueprint,
 } from "../shared/types";
 import { MAX_REPAIR_ATTEMPTS } from "./config";
 import { getBlueprint, requireActive } from "./db/connection";
@@ -29,22 +30,26 @@ import * as gateway from "./gateway";
  * guarantee is worth more than the prose.
  */
 
-type Emit = (event: PipelineEvent) => void;
+export type Emit = (event: PipelineEvent) => void;
 
-export async function runPipeline(request: PipelineRequest, emit: Emit): Promise<PipelineResult> {
-  const question = request.question.trim();
-  if (!question) {
-    throw new AppError("EMPTY_QUESTION", "Type a question first.");
-  }
+export interface SchemaSelection {
+  schemaDdl: string[];
+  tables: string[];
+  /** Human-readable name of the tier that made the selection. */
+  ranking: string;
+  /** True when nothing matched and the first few tables were sent instead. */
+  usedFallback: boolean;
+}
 
-  const started = Date.now();
-  const { driver, config } = requireActive();
-  const blueprint = getBlueprint();
-
-  // --- Step 3: local metadata RAG -------------------------------------
-  const schemaStart = Date.now();
-  emit({ step: "pruning", message: "Matching your question against the local schema…" });
-
+/**
+ * Step 3: local metadata RAG. Picks the tables `question` needs and renders
+ * their empty CREATE TABLE structure — the only database-derived content
+ * that leaves this machine.
+ *
+ * Shared by the one-shot pipeline and agent talk, so a clarifying question
+ * is grounded in exactly the schema the translator will later see.
+ */
+export async function selectSchema(blueprint: SchemaBlueprint, question: string): Promise<SchemaSelection> {
   // Table selection runs three tiers deep, each one a fallback for the one
   // above. The order is by accuracy; every tier is optional except the last,
   // which is local and always works.
@@ -65,7 +70,6 @@ export async function runPipeline(request: PipelineRequest, emit: Emit): Promise
   const tables = linked ? linked.tables : pruned!.tables;
 
   const schemaDdl = blueprintFor(tables);
-  const schemaTablesSent = tables.map((table) => table.name);
 
   if (schemaDdl.length === 0) {
     throw new AppError(
@@ -82,13 +86,36 @@ export async function runPipeline(request: PipelineRequest, emit: Emit): Promise
       ? "semantic + keyword match"
       : "keyword match";
 
+  return {
+    schemaDdl,
+    tables: tables.map((table) => table.name),
+    ranking,
+    usedFallback: pruned?.usedFallback ?? false,
+  };
+}
+
+export async function runPipeline(request: PipelineRequest, emit: Emit): Promise<PipelineResult> {
+  const question = request.question.trim();
+  if (!question) {
+    throw new AppError("EMPTY_QUESTION", "Type a question first.");
+  }
+
+  const started = Date.now();
+  const { driver, config } = requireActive();
+  const blueprint = getBlueprint();
+
+  // --- Step 3: local metadata RAG -------------------------------------
+  const schemaStart = Date.now();
+  emit({ step: "pruning", message: "Matching your question against the local schema…" });
+
+  const { schemaDdl, tables: schemaTablesSent, ranking, usedFallback } = await selectSchema(blueprint, question);
+
   emit({
     step: "pruning",
     message: `Sending ${schemaDdl.length} of ${blueprint.tables.length} table structures (${ranking})`,
-    detail:
-      pruned?.usedFallback
-        ? `Nothing in the schema matched the question, so the first ${schemaDdl.length} were used: ${schemaTablesSent.join(", ")}`
-        : schemaTablesSent.join(", "),
+    detail: usedFallback
+      ? `Nothing in the schema matched the question, so the first ${schemaDdl.length} were used: ${schemaTablesSent.join(", ")}`
+      : schemaTablesSent.join(", "),
   });
   const schemaMs = Date.now() - schemaStart;
 

@@ -20,6 +20,15 @@ class RepairContext(BaseModel):
     attempt: int = Field(ge=1, le=10, description="1-based index of this retry")
 
 
+def _check_schema_ddl(value: list[str]) -> list[str]:
+    for statement in value:
+        if not statement.strip():
+            raise ValueError("schema_ddl entries must not be empty")
+        if len(statement) > 20_000:
+            raise ValueError("schema_ddl entries must be 20000 characters or fewer")
+    return value
+
+
 class TranslateRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2_000)
     # Empty CREATE TABLE blueprints only — the client's local RAG step has
@@ -32,12 +41,58 @@ class TranslateRequest(BaseModel):
     @field_validator("schema_ddl")
     @classmethod
     def _reject_oversized_ddl(cls, value: list[str]) -> list[str]:
-        for statement in value:
-            if not statement.strip():
-                raise ValueError("schema_ddl entries must not be empty")
-            if len(statement) > 20_000:
-                raise ValueError("schema_ddl entries must be 20000 characters or fewer")
+        return _check_schema_ddl(value)
+
+
+class ChatTurn(BaseModel):
+    """One message of an agent-talk conversation: a clarifying question the
+    model asked, or the user's reply to it. Prose only — never row data."""
+
+    role: Literal["assistant", "user"]
+    content: str = Field(min_length=1, max_length=2_000)
+
+
+class ClarifyRequest(BaseModel):
+    """
+    Agent-talk input: the original question, the pruned schema blueprint,
+    and the conversation so far.
+
+    The blueprint is what keeps the clarifying questions honest — the model
+    can only offer interpretations the connected schema can actually answer.
+    """
+
+    question: str = Field(min_length=1, max_length=2_000)
+    schema_ddl: list[str] = Field(min_length=1, max_length=80)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=12)
+
+    @field_validator("question")
+    @classmethod
+    def _reject_blank_question(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("question must not be blank")
         return value
+
+    @field_validator("schema_ddl")
+    @classmethod
+    def _reject_oversized_ddl(cls, value: list[str]) -> list[str]:
+        return _check_schema_ddl(value)
+
+
+class ClarifyResponse(BaseModel):
+    """
+    One agent turn.
+
+    - `ask`: `message` is a question for the user, `options` suggested replies.
+    - `ready`: `resolved_question` is a self-contained question for
+      `/v1/translate`; `assumptions` lists defaults the model chose.
+    - `unanswerable`: `message` says what the schema is missing.
+    """
+
+    status: Literal["ask", "ready", "unanswerable"]
+    message: str = ""
+    options: list[str] = []
+    resolved_question: str | None = None
+    assumptions: list[str] = []
 
 
 class UsageInfo(BaseModel):

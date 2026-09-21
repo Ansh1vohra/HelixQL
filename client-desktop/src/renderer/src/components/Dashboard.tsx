@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ConnectionStatus, PipelineEvent, PipelineResult, SessionInfo } from "../../../shared/types";
 import { errorCode, errorMessage, unwrap } from "../lib/ipc";
+import { AgentChat } from "./AgentChat";
 import { ConnectionPanel } from "./ConnectionPanel";
 import { DataGrid } from "./DataGrid";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
@@ -11,7 +12,9 @@ import { Banner, Button, Panel } from "./ui";
  * an advisory rather than a red failure banner. */
 const ADVISORY_CODES = new Set(["QUESTION_UNANSWERABLE", "QUERY_LIMIT_EXCEEDED", "SECURITY_VIOLATION"]);
 
-type Mode = "ask" | "sql";
+type Mode = "ask" | "agent" | "sql";
+
+const MODE_LABELS: Record<Mode, string> = { ask: "Ask in English", agent: "Agent talk", sql: "Write SQL" };
 type SidebarTab = "connection" | "schema";
 
 function errorTitle(code: string): string {
@@ -55,7 +58,10 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
     if (next.connected) setSidebarTab("schema");
   }
 
-  async function execute(call: () => Promise<PipelineResult>): Promise<void> {
+  /** Runs one call against the shared results panels. A null outcome is an
+   * agent turn that asked a question instead of running. Resolves false if
+   * the call failed, so the caller can roll back its own state. */
+  async function execute(call: () => Promise<PipelineResult | null>): Promise<boolean> {
     setRunning(true);
     setError(null);
     setEvents([]);
@@ -65,9 +71,11 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
       setResult(outcome);
       // Usage only comes back from a metered (English) run, so keep the last
       // known figure rather than blanking the badge on a manual query.
-      if (outcome.usage) setUsage(outcome.usage);
+      if (outcome?.usage) setUsage(outcome.usage);
+      return true;
     } catch (err) {
       setError({ message: errorMessage(err), code: errorCode(err) });
+      return false;
     } finally {
       setRunning(false);
     }
@@ -154,7 +162,7 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
         <main className="flex min-w-0 flex-1 flex-col gap-3 p-3">
           <div className="shrink-0 space-y-2">
             <div className="flex gap-1">
-              {(["ask", "sql"] as const).map((option) => (
+              {(["ask", "agent", "sql"] as const).map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -165,12 +173,23 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
                       : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                   }`}
                 >
-                  {option === "ask" ? "Ask in English" : "Write SQL"}
+                  {MODE_LABELS[option]}
                 </button>
               ))}
             </div>
 
-            {mode === "ask" ? (
+            {/* Kept mounted while hidden so switching modes doesn't drop a
+                conversation halfway through. */}
+            <div className={mode === "agent" ? undefined : "hidden"}>
+              <AgentChat
+                connected={status.connected}
+                running={running}
+                progress={latestEvent?.message}
+                execute={execute}
+              />
+            </div>
+
+            {mode === "agent" ? null : mode === "ask" ? (
               <textarea
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
@@ -197,22 +216,24 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
               />
             )}
 
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">
-                {mode === "ask"
-                  ? "Enter to run · results stay on this machine"
-                  : "Read-only SELECT queries only · ⌘/Ctrl+Enter to run · not counted against your plan"}
-              </span>
+            {mode !== "agent" && (
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">
+                  {mode === "ask"
+                    ? "Enter to run · results stay on this machine"
+                    : "Read-only SELECT queries only · ⌘/Ctrl+Enter to run · not counted against your plan"}
+                </span>
 
-              <div className="flex items-center gap-3">
-                {running && latestEvent && (
-                  <span className="animate-pulse text-[11px] text-brand-600">{latestEvent.message}</span>
-                )}
-                <Button onClick={handleRun} disabled={!canRun}>
-                  {running ? "Running…" : mode === "ask" ? "Run analysis" : "Run query"}
-                </Button>
+                <div className="flex items-center gap-3">
+                  {running && latestEvent && (
+                    <span className="animate-pulse text-[11px] text-brand-600">{latestEvent.message}</span>
+                  )}
+                  <Button onClick={handleRun} disabled={!canRun}>
+                    {running ? "Running…" : mode === "ask" ? "Run analysis" : "Run query"}
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {error && (

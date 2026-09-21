@@ -104,6 +104,11 @@ class Settings(BaseSettings):
     # modified client can't spin the LLM indefinitely on one question.
     max_repair_attempts: int = 3
 
+    # Agent-talk bound: how many clarifying questions the model may ask
+    # before it has to commit to an interpretation. Enforced here, not only
+    # in the client, because clarification is unmetered.
+    max_clarify_turns: int = 3
+
     # Hard ceiling applied to generated SELECTs that carry no LIMIT of their
     # own, so a vague question can't pull a whole table into desktop memory.
     max_result_rows: int = 1000

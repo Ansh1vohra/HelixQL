@@ -114,6 +114,7 @@ export interface PipelineResult {
 
 export type PipelineStep =
   | "pruning"
+  | "clarifying"
   | "translating"
   | "validating"
   | "explaining"
@@ -135,6 +136,32 @@ export interface PipelineRequest {
 export interface SqlRequest {
   sql: string;
 }
+
+/** One message of an agent-talk conversation. Prose only — the model's
+ * clarifying question or the user's reply. Never row data. */
+export interface ChatTurn {
+  role: "assistant" | "user";
+  content: string;
+}
+
+export interface AgentTurnRequest {
+  /** The question that opened the conversation. */
+  question: string;
+  /** Every turn since, oldest first. */
+  history: ChatTurn[];
+  /** Stop asking and run with what has been said so far. */
+  skip?: boolean;
+}
+
+/**
+ * One agent turn: either a clarifying question for the user, a finished
+ * run on the question the conversation settled on, or a report that the
+ * connected schema cannot answer it.
+ */
+export type AgentTurnResult =
+  | { kind: "ask"; message: string; options: string[] }
+  | { kind: "answer"; resolvedQuestion: string; assumptions: string[]; result: PipelineResult }
+  | { kind: "unanswerable"; message: string };
 
 export interface IpcError {
   message: string;
@@ -180,6 +207,9 @@ export interface HelixApi {
     run(request: PipelineRequest): Promise<IpcResult<PipelineResult>>;
     /** Runs hand-written SQL through the same guardrail. Not metered. */
     runSql(request: SqlRequest): Promise<IpcResult<PipelineResult>>;
+    /** One turn of agent talk. Clarification is free; a final run is
+     * metered like any English question. */
+    agentTurn(request: AgentTurnRequest): Promise<IpcResult<AgentTurnResult>>;
     /** Returns an unsubscribe function. */
     onEvent(callback: (event: PipelineEvent) => void): () => void;
   };

@@ -3,6 +3,8 @@ import type {
   ConnectionConfig,
   ConnectionStatus,
   EndpointConfig,
+  AgentTurnRequest,
+  AgentTurnResult,
   PipelineEvent,
   PipelineRequest,
   PipelineResult,
@@ -10,6 +12,7 @@ import type {
   SessionInfo,
   SqlRequest,
 } from "../shared/types";
+import { runAgentTurn } from "./agent";
 import { getEndpoints, setEndpoints } from "./config";
 import * as connection from "./db/connection";
 import { handled } from "./errors";
@@ -29,6 +32,7 @@ export const IPC = {
   dbRefreshSchema: "db:refresh-schema",
   pipelineRun: "pipeline:run",
   pipelineRunSql: "pipeline:run-sql",
+  pipelineAgentTurn: "pipeline:agent-turn",
   pipelineEvent: "pipeline:event",
 } as const;
 
@@ -87,5 +91,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.pipelineRunSql, (event, request: SqlRequest) =>
     handled<PipelineResult>(() => runSql(request.sql, emitterFor(event))),
+  );
+
+  ipcMain.handle(IPC.pipelineAgentTurn, (event, request: AgentTurnRequest) =>
+    handled<AgentTurnResult>(() => runAgentTurn(request, emitterFor(event))),
   );
 }

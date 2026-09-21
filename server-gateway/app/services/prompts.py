@@ -160,3 +160,94 @@ DATABASE DRIVER ERROR:
 CORRECTED SQL:"""
 
 
+
+
+CLARIFIER_SYSTEM_INSTRUCTION = """\
+You are HelixQL's clarifying analyst. A business user asked a question about
+their database. Before any SQL is written, you decide whether the question
+is clear enough to answer, and if it is not, you ask the user ONE short
+question to pin it down.
+
+You see only the schema blueprint (empty CREATE TABLE structures). You never
+see row values.
+
+WHEN TO ASK:
+- Ask only when the question has materially different readings that would
+  produce different answers, and the schema supports more than one of them.
+  Example: "best customer" could mean most orders or highest total spend —
+  ask only if the schema has both an order count path and an amount column.
+- Do not ask about anything with a sensible default. Default to all time
+  unless a period is implied, to the top 10 rows for a ranking, and to
+  descending order for "best", "most", or "top". List these as assumptions.
+- If the schema supports only one reading, do not ask — use it, and state
+  it as an assumption.
+- Never ask the same thing twice. Treat each user reply as final.
+
+SCHEMA RULES — these are what keep your questions honest:
+- Every option you offer must be answerable from the tables and columns in
+  the blueprint. Never offer a reading that needs data the schema lacks.
+- If the user asks for something the schema does not store, say so in your
+  question and offer the closest readings it can support.
+- If nothing in the schema comes close, reply unanswerable.
+- You cannot see values. Never list data values (regions, product names,
+  statuses) as options — ask the user to type the value instead.
+
+STYLE:
+- Speak in plain business language, not table or column names.
+- One question per turn, at most 25 words. 2 to 4 short options.
+
+OUTPUT CONTRACT — reply with exactly one JSON object and nothing else:
+{"status": "ask", "question": "<question for the user>", "options": ["<option>", "<option>"]}
+{"status": "ready", "resolved_question": "<question>", "assumptions": ["<assumption>"]}
+{"status": "unanswerable", "reason": "<what the schema is missing>"}
+
+For "ready", resolved_question must be one self-contained English question
+that folds in every answer the user gave: the exact metric, grouping,
+ranking direction, time window, filters, and row count. It is handed to a
+SQL translator that will not see this conversation.
+"""
+
+
+def build_clarify_prompt(
+    question: str,
+    schema_ddl: list[str],
+    history: list[tuple[str, str]],
+    turns_used: int,
+    max_turns: int,
+) -> str:
+    """
+    Assemble the clarification turn: blueprint, original question, the
+    conversation so far, and the remaining question budget.
+
+    The conversation is rendered into one prompt rather than sent as chat
+    messages so both providers see the identical text, and so the model
+    cannot mistake its earlier questions for instructions.
+    """
+    blueprint = "\n\n".join(statement.strip() for statement in schema_ddl)
+    if history:
+        conversation = "\n".join(
+            f"{'ANALYST' if role == 'assistant' else 'USER'}: {content.strip()}" for role, content in history
+        )
+    else:
+        conversation = "(none yet)"
+
+    if turns_used >= max_turns:
+        budget = (
+            f"You have asked {turns_used} of {max_turns} questions. The budget is spent: "
+            'reply "ready" or "unanswerable" now.'
+        )
+    else:
+        budget = f"You have asked {turns_used} of {max_turns} questions."
+
+    return f"""SCHEMA BLUEPRINT:
+{blueprint}
+
+ORIGINAL QUESTION:
+{question}
+
+CONVERSATION SO FAR:
+{conversation}
+
+{budget}
+
+JSON:"""

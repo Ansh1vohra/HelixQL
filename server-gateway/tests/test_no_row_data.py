@@ -27,16 +27,17 @@ def test_no_summarize_endpoint_exists():
 def test_the_route_surface_is_exactly_what_is_expected():
     """A new route that accepts rows would show up here first.
 
-    `/v1/embed` and `/v1/link-schema` were added for schema selection. Both
-    widen the surface, so the tests below hold them to the same standard as
-    translate and validate: identifier and question text in, no field in
-    either schema that could carry a row.
+    `/v1/embed` and `/v1/link-schema` were added for schema selection, and
+    `/v1/clarify` for agent talk. Each widens the surface, so the tests below
+    hold them to the same standard as translate and validate: identifier,
+    question, and conversation text in, no field that could carry a row.
     """
     assert {path for path in route_paths() if path.startswith("/v1/")} == {
         "/v1/translate",
         "/v1/validate",
         "/v1/embed",
         "/v1/link-schema",
+        "/v1/clarify",
     }
 
 
@@ -142,3 +143,27 @@ def test_no_summarizer_prompt_remains():
     from app.services import prompts
 
     assert not any("SUMMAR" in name.upper() for name in dir(prompts))
+
+
+def test_clarify_accepts_no_field_that_could_carry_rows():
+    """History turns are free text a user typed, bounded in size and count —
+    the same class as the question itself. There is no structured field."""
+    from app.schemas import ChatTurn, ClarifyRequest
+
+    assert set(ClarifyRequest.model_fields) == {"question", "schema_ddl", "history"}
+    assert set(ChatTurn.model_fields) == {"role", "content"}
+
+
+def test_clarify_ignores_a_payload_carrying_rows(client, fake_llm):
+    response = client.post(
+        "/v1/clarify",
+        json={
+            "question": "who is our best customer",
+            "schema_ddl": TEST_SCHEMA,
+            "rows": [{"name": "Asha", "email": "asha@example.com"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Asha" not in str(fake_llm.clarify_calls)
+    assert "asha@example.com" not in str(fake_llm.clarify_calls)

@@ -16,10 +16,14 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from app.config import Settings
 from app.errors import LlmUnavailableError, TranslationError
+from app.schemas import ClarifyResponse
+from app.services.clarify_output import parse_clarification
 from app.services.prompts import (
+    CLARIFIER_SYSTEM_INSTRUCTION,
     REPAIR_SYSTEM_INSTRUCTION,
     SCHEMA_LINKER_SYSTEM_INSTRUCTION,
     TRANSLATOR_SYSTEM_INSTRUCTION,
+    build_clarify_prompt,
     build_repair_prompt,
     build_schema_link_prompt,
     build_translation_prompt,
@@ -173,6 +177,21 @@ class GeminiSynthesisEngine:
         raw = await self._call_model(build_schema_link_prompt(question, catalog), config)
         return parse_table_list(raw, known)
 
+    async def clarify(
+        self,
+        question: str,
+        schema_ddl: list[str],
+        history: list[tuple[str, str]],
+        max_turns: int,
+    ) -> ClarifyResponse:
+        turns_used = sum(1 for role, _ in history if role == "assistant")
+        config = self._config(CLARIFIER_SYSTEM_INSTRUCTION)
+        raw = await self._call_model(
+            build_clarify_prompt(question, schema_ddl, history, turns_used, max_turns),
+            config,
+        )
+        return parse_clarification(raw, question, history, budget_spent=turns_used >= max_turns)
+
 
 # --- Provider selection ---------------------------------------------------
 
@@ -197,6 +216,14 @@ class SynthesisEngine(Protocol):
     ) -> str: ...
 
     async def link_schema(self, question: str, catalog: list[str], known: list[str]) -> list[str]: ...
+
+    async def clarify(
+        self,
+        question: str,
+        schema_ddl: list[str],
+        history: list[tuple[str, str]],
+        max_turns: int,
+    ) -> ClarifyResponse: ...
 
 
 def create_engine(settings: Settings) -> SynthesisEngine:

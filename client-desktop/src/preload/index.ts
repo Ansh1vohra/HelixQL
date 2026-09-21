@@ -5,6 +5,8 @@ import type {
   EndpointConfig,
   HelixApi,
   IpcResult,
+  AgentTurnRequest,
+  AgentTurnResult,
   PipelineEvent,
   PipelineRequest,
   PipelineResult,
@@ -46,6 +48,8 @@ const api: HelixApi = {
       ipcRenderer.invoke("pipeline:run", request),
     runSql: (request: SqlRequest): Promise<IpcResult<PipelineResult>> =>
       ipcRenderer.invoke("pipeline:run-sql", request),
+    agentTurn: (request: AgentTurnRequest): Promise<IpcResult<AgentTurnResult>> =>
+      ipcRenderer.invoke("pipeline:agent-turn", request),
     /** Subscribe to progress events; returns an unsubscribe function so a
      * remounting React component can't leak listeners. */
     onEvent: (callback: (event: PipelineEvent) => void): (() => void) => {

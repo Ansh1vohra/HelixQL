@@ -5,6 +5,8 @@ from fastapi import APIRouter
 from app.dependencies import ControlPlaneDep, CurrentUser, LlmDep, SettingsDep
 from app.errors import QueryLimitExceededError
 from app.schemas import (
+    ClarifyRequest,
+    ClarifyResponse,
     LinkSchemaRequest,
     LinkSchemaResponse,
     TranslateRequest,
@@ -167,3 +169,32 @@ async def validate(payload: ValidateRequest, user: CurrentUser, settings: Settin
     """
     result = validate_sql(payload.sql, payload.dialect, max_rows=settings.max_result_rows)
     return ValidateResponse(sql=result.sql, tables=result.tables, limit_applied=result.limit_applied)
+
+
+@router.post("/clarify", response_model=ClarifyResponse)
+async def clarify(payload: ClarifyRequest, user: CurrentUser, llm: LlmDep, settings: SettingsDep) -> ClarifyResponse:
+    """
+    One turn of agent talk: decide whether the question is clear enough to
+    translate, and if not, ask the user one schema-grounded question.
+
+    The pruned blueprint is what keeps this honest. The model only offers
+    readings the connected schema can answer ("most orders" vs "highest
+    spend" only when an amount column exists), and says early when the
+    data is missing instead of letting the translator discover it.
+
+    Authenticated but **not metered**, on the same reasoning as
+    `/v1/link-schema`: it runs in service of one translation that already
+    is. `max_clarify_turns` bounds the cost instead — once the budget is
+    spent, the reply is forced to "ready" regardless of what the model says.
+    """
+    history = [(turn.role, turn.content) for turn in payload.history]
+    result = await llm.clarify(payload.question, payload.schema_ddl, history, settings.max_clarify_turns)
+
+    logger.info(
+        "clarify user=%s turns=%s status=%s",
+        user.user_id,
+        sum(1 for role, _ in history if role == "assistant"),
+        result.status,
+    )
+
+    return result
