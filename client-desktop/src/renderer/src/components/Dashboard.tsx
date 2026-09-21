@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ConnectionStatus, PipelineEvent, PipelineResult, SessionInfo } from "../../../shared/types";
+import type { ConnectionStatus, Dialect, PipelineEvent, PipelineResult, SessionInfo } from "../../../shared/types";
 import { errorCode, errorMessage, unwrap } from "../lib/ipc";
 import { AgentChat } from "./AgentChat";
 import { ConnectionPanel } from "./ConnectionPanel";
@@ -28,6 +28,13 @@ function errorTitle(code: string): string {
     default:
       return "Query failed";
   }
+}
+
+/** Quotes a table name so reserved words and mixed case survive, escaping
+ * the quote character itself by doubling it. */
+function quoteIdentifier(name: string, dialect: Dialect): string {
+  const quote = dialect === "mysql" ? "`" : '"';
+  return quote + name.split(quote).join(quote + quote) + quote;
 }
 
 export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSignOut: () => void }): JSX.Element {
@@ -92,6 +99,17 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
     );
   }
 
+  /** "View data" from the schema browser: shows the table's rows in the
+   * Write SQL tab, so the query stays visible and editable and goes through
+   * the same guardrail (and row cap) as anything typed there. */
+  function handleViewData(table: string, dialect: Dialect): void {
+    if (running) return;
+    const query = `SELECT * FROM ${quoteIdentifier(table, dialect)}`;
+    setMode("sql");
+    setSql(query);
+    void execute(() => unwrap(window.api.pipeline.runSql({ sql: query })));
+  }
+
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>): void {
     // Ctrl/Cmd+Enter runs in both modes. Plain Enter also runs in Ask mode,
     // where the input is one line of prose; in SQL mode it must insert a
@@ -154,7 +172,10 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
             {sidebarTab === "connection" ? (
               <ConnectionPanel status={status} onStatusChange={handleStatusChange} />
             ) : (
-              <SchemaBrowser refreshKey={status.capturedAt ? Date.parse(status.capturedAt) : 0} />
+              <SchemaBrowser
+                refreshKey={status.capturedAt ? Date.parse(status.capturedAt) : 0}
+                onViewData={handleViewData}
+              />
             )}
           </div>
         </aside>

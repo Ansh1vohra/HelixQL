@@ -10,10 +10,40 @@ import { EmptyState } from "./ui";
  * Reads the blueprint already cached in the main process from the Step 1
  * catalog sweep, so opening it costs no round trip to the database.
  */
-export function SchemaBrowser({ refreshKey }: { refreshKey: number }): JSX.Element {
+export function SchemaBrowser({
+  refreshKey,
+  onViewData,
+}: {
+  refreshKey: number;
+  /** Called from a table's right-click menu to show that table's rows. */
+  onViewData: (table: string, dialect: SchemaBlueprint["dialect"]) => void;
+}): JSX.Element {
   const [blueprint, setBlueprint] = useState<SchemaBlueprint | null>(null);
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ table: string; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    // Any click, scroll, resize or Escape dismisses the menu, the way a
+    // native context menu behaves.
+    const close = (): void => setMenu(null);
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("blur", close);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKey);
+    return (): void => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("blur", close);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
 
   useEffect(() => {
     unwrap(window.api.db.schema())
@@ -60,6 +90,10 @@ export function SchemaBrowser({ refreshKey }: { refreshKey: number }): JSX.Eleme
                 table={table}
                 open={expanded === table.name}
                 onToggle={() => setExpanded(expanded === table.name ? null : table.name)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setMenu({ table: table.name, x: event.clientX, y: event.clientY });
+                }}
               />
             ))}
           </ul>
@@ -70,6 +104,26 @@ export function SchemaBrowser({ refreshKey }: { refreshKey: number }): JSX.Eleme
         {blueprint.tables.length} tables · {blueprint.database} · mapped{" "}
         {new Date(blueprint.capturedAt).toLocaleTimeString()}
       </div>
+
+      {menu && (
+        <div
+          role="menu"
+          style={{ left: menu.x, top: menu.y }}
+          className="fixed z-50 min-w-36 rounded border border-slate-200 bg-white py-1 text-xs shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onViewData(menu.table, blueprint.dialect);
+              setMenu(null);
+            }}
+            className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-brand-50 hover:text-brand-700"
+          >
+            View data
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -78,10 +132,12 @@ function TableRow({
   table,
   open,
   onToggle,
+  onContextMenu,
 }: {
   table: TableInfo;
   open: boolean;
   onToggle: () => void;
+  onContextMenu: (event: React.MouseEvent) => void;
 }): JSX.Element {
   const foreignKeyFor = (column: string): string | null => {
     const fk = table.foreignKeys.find((candidate) => candidate.column === column);
@@ -93,6 +149,7 @@ function TableRow({
       <button
         type="button"
         onClick={onToggle}
+        onContextMenu={onContextMenu}
         className="flex w-full items-center justify-between px-3 py-1.5 text-left transition hover:bg-slate-100"
       >
         <span className="flex items-center gap-1.5 font-mono text-xs text-slate-800">
