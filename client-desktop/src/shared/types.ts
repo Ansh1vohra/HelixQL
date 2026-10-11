@@ -144,11 +144,23 @@ export interface ChatTurn {
   content: string;
 }
 
+/** An earlier, already-answered question in the same agent-talk thread:
+ * what was asked and the self-contained form it was run as. Never its
+ * result — rows stay on this machine, so a follow-up is resolved from the
+ * questions alone. */
+export interface PriorExchange {
+  question: string;
+  resolvedQuestion: string;
+}
+
 export interface AgentTurnRequest {
-  /** The question that opened the conversation. */
+  /** The question that opened this exchange. */
   question: string;
   /** Every turn since, oldest first. */
   history: ChatTurn[];
+  /** Earlier questions in the thread this one may follow up on, oldest
+   * first — so "do we have email for all?" knows "all" means customers. */
+  context?: PriorExchange[];
   /** Stop asking and run with what has been said so far. */
   skip?: boolean;
 }

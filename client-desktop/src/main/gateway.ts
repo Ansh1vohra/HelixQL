@@ -1,4 +1,4 @@
-import type { ChatTurn, Dialect } from "../shared/types";
+import type { ChatTurn, Dialect, PriorExchange } from "../shared/types";
 import { getEndpoints } from "./config";
 import { AppError } from "./errors";
 import { requireApiToken } from "./session";
@@ -145,6 +145,16 @@ export interface ClarifyResponse {
  * and text the user typed. Not metered: it runs in service of the one
  * translation the conversation ends in, and the gateway caps the turns.
  */
-export function clarify(question: string, schemaDdl: string[], history: ChatTurn[]): Promise<ClarifyResponse> {
-  return post<ClarifyResponse>("/v1/clarify", { question, schema_ddl: schemaDdl, history });
+export function clarify(
+  question: string,
+  schemaDdl: string[],
+  history: ChatTurn[],
+  context: PriorExchange[] = [],
+): Promise<ClarifyResponse> {
+  return post<ClarifyResponse>("/v1/clarify", {
+    question,
+    schema_ddl: schemaDdl,
+    history,
+    context: context.map((prior) => ({ question: prior.question, resolved_question: prior.resolvedQuestion })),
+  });
 }

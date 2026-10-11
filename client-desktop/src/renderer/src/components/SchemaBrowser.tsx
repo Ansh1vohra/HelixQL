@@ -100,7 +100,7 @@ export function SchemaBrowser({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-slate-200 px-3 py-1.5 text-[10px] text-slate-400">
+      <div className="shrink-0 border-t border-slate-200 px-3 py-1.5 text-2xs text-slate-400">
         {blueprint.tables.length} tables · {blueprint.database} · mapped{" "}
         {new Date(blueprint.capturedAt).toLocaleTimeString()}
       </div>
@@ -156,7 +156,7 @@ function TableRow({
           <span className="text-slate-400">{open ? "▾" : "▸"}</span>
           {table.name}
         </span>
-        <span className="text-[10px] text-slate-400">{table.columns.length}</span>
+        <span className="text-2xs text-slate-400">{table.columns.length}</span>
       </button>
 
       {open && (
@@ -165,7 +165,7 @@ function TableRow({
             const references = foreignKeyFor(column.name);
             return (
               <li key={column.name} className="flex items-baseline justify-between gap-2 py-0.5">
-                <span className="truncate font-mono text-[11px] text-slate-600">
+                <span className="truncate font-mono text-2xs text-slate-600">
                   {column.isPrimaryKey && <span className="mr-1 text-amber-600" title="Primary key">PK</span>}
                   {references && (
                     <span className="mr-1 text-brand-600" title={`References ${references}`}>
@@ -174,7 +174,7 @@ function TableRow({
                   )}
                   {column.name}
                 </span>
-                <span className="shrink-0 font-mono text-[10px] text-slate-400">
+                <span className="shrink-0 font-mono text-2xs text-slate-400">
                   {column.dataType}
                   {!column.nullable && " ·not null"}
                 </span>

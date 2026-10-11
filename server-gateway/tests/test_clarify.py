@@ -190,3 +190,50 @@ def test_the_route_rejects_unknown_roles(client, role):
 def test_the_route_rejects_an_oversized_history(client):
     history = [{"role": "user", "content": "x"}] * 13
     assert client.post("/v1/clarify", json=_payload(history=history)).status_code in (400, 422)
+
+
+# --- Follow-up questions --------------------------------------------------
+
+
+def test_prompt_lists_earlier_questions_for_a_follow_up():
+    context = [("how many customers do we have", "How many customers are there?")]
+    prompt = build_clarify_prompt("do we have email for all?", SCHEMA, [], 0, 3, context)
+
+    assert "EARLIER QUESTIONS" in prompt
+    assert "Asked: how many customers do we have" in prompt
+    assert "Ran as: How many customers are there?" in prompt
+    assert prompt.index("EARLIER QUESTIONS") < prompt.index("ORIGINAL QUESTION")
+
+
+def test_prompt_without_context_has_no_earlier_section():
+    assert "EARLIER QUESTIONS" not in build_clarify_prompt("q", SCHEMA, [], 0, 3)
+
+
+def test_fallback_for_a_follow_up_names_the_question_it_follows():
+    context = [("how many customers", "How many customers are there?")]
+    assert (
+        fallback_question("do we have email for all?", [], context)
+        == "do we have email for all? (follow-up to: How many customers are there?)"
+    )
+
+
+def test_the_route_passes_earlier_questions(client, fake_llm):
+    context = [{"question": "how many customers", "resolved_question": "How many customers are there?"}]
+    client.post("/v1/clarify", json=_payload(question="email for all?", context=context))
+
+    assert fake_llm.clarify_calls[0]["context"] == [("how many customers", "How many customers are there?")]
+
+
+def test_the_route_rejects_an_oversized_context(client):
+    context = [{"question": "q", "resolved_question": "q"}] * 7
+    response = client.post("/v1/clarify", json=_payload(context=context))
+    assert response.status_code == 400
+
+
+def test_existence_questions_are_resolved_to_counts():
+    """"Do we have any reviews?" once ran as an EXISTS probe, and its lone
+    `1` was read as "one review"."""
+    from app.services.prompts import CLARIFIER_SYSTEM_INSTRUCTION, TRANSLATOR_SYSTEM_INSTRUCTION
+
+    assert "How many reviews" in CLARIFIER_SYSTEM_INSTRUCTION
+    assert "Never return EXISTS" in TRANSLATOR_SYSTEM_INSTRUCTION

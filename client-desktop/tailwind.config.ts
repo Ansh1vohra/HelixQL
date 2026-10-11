@@ -3,6 +3,19 @@ import type { Config } from "tailwindcss";
 const config: Config = {
   content: ["./src/renderer/index.html", "./src/renderer/src/**/*.{ts,tsx}"],
   theme: {
+    // One step larger than Tailwind's defaults across the board: the stock
+    // 12px `text-xs` was too small to read comfortably in a dense desktop
+    // UI. Sizing lives here, not in components, so it can be tuned in one
+    // place.
+    fontSize: {
+      "2xs": ["0.8125rem", { lineHeight: "1.125rem" }], // 13px — captions, metadata
+      xs: ["0.875rem", { lineHeight: "1.25rem" }], // 14px — labels, grids
+      sm: ["1rem", { lineHeight: "1.5rem" }], // 16px — body, inputs, buttons
+      base: ["1.0625rem", { lineHeight: "1.625rem" }], // 17px
+      lg: ["1.1875rem", { lineHeight: "1.75rem" }], // 19px
+      xl: ["1.375rem", { lineHeight: "1.875rem" }], // 22px
+      "2xl": ["1.625rem", { lineHeight: "2.125rem" }], // 26px
+    },
     extend: {
       colors: {
         brand: {

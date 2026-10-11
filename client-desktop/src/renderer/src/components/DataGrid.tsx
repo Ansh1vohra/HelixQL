@@ -34,7 +34,7 @@ export function DataGrid({ grid, emptyMessage }: { grid: ResultGrid; emptyMessag
       <tbody>
         {grid.rows.map((row, index) => (
           <tr key={index} className="hover:bg-slate-50">
-            <td className="border-b border-slate-100 px-3 py-1.5 font-mono text-[10px] text-slate-400">
+            <td className="border-b border-slate-100 px-3 py-1.5 font-mono text-2xs text-slate-400">
               {index + 1}
             </td>
             {grid.columns.map((column) => {

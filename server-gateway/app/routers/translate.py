@@ -188,7 +188,10 @@ async def clarify(payload: ClarifyRequest, user: CurrentUser, llm: LlmDep, setti
     spent, the reply is forced to "ready" regardless of what the model says.
     """
     history = [(turn.role, turn.content) for turn in payload.history]
-    result = await llm.clarify(payload.question, payload.schema_ddl, history, settings.max_clarify_turns)
+    context = [(prior.question, prior.resolved_question) for prior in payload.context]
+    result = await llm.clarify(
+        payload.question, payload.schema_ddl, history, settings.max_clarify_turns, context=context
+    )
 
     logger.info(
         "clarify user=%s turns=%s status=%s",

@@ -147,11 +147,14 @@ def test_no_summarizer_prompt_remains():
 
 def test_clarify_accepts_no_field_that_could_carry_rows():
     """History turns are free text a user typed, bounded in size and count —
-    the same class as the question itself. There is no structured field."""
-    from app.schemas import ChatTurn, ClarifyRequest
+    the same class as the question itself. Earlier questions in `context`
+    are the same again: what was asked and how it was run, never what came
+    back. There is no structured field."""
+    from app.schemas import ChatTurn, ClarifyRequest, PriorExchange
 
-    assert set(ClarifyRequest.model_fields) == {"question", "schema_ddl", "history"}
+    assert set(ClarifyRequest.model_fields) == {"question", "schema_ddl", "history", "context"}
     assert set(ChatTurn.model_fields) == {"role", "content"}
+    assert set(PriorExchange.model_fields) == {"question", "resolved_question"}
 
 
 def test_clarify_ignores_a_payload_carrying_rows(client, fake_llm):

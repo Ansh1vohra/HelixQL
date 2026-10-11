@@ -103,7 +103,7 @@ export function ConnectionPanel({
           </Button>
         </div>
 
-        <p className="text-[11px] leading-relaxed text-slate-400">
+        <p className="text-2xs leading-relaxed text-slate-400">
           Credentials are held in this app&apos;s memory only. They are never written to disk and never sent to
           HelixQL&apos;s servers.
         </p>

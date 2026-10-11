@@ -52,7 +52,7 @@ describe("runAgentTurn", () => {
 
     await runAgentTurn({ question: "best customer", history: [] }, emit);
 
-    expect(clarify).toHaveBeenCalledWith("best customer", ["CREATE TABLE orders (id INT, total DECIMAL);"], []);
+    expect(clarify).toHaveBeenCalledWith("best customer", ["CREATE TABLE orders (id INT, total DECIMAL);"], [], []);
   });
 
   it("selects tables using the user's replies as well as the question", async () => {
@@ -108,6 +108,40 @@ describe("runAgentTurn", () => {
     expect(clarify).not.toHaveBeenCalled();
     expect(selectSchema).not.toHaveBeenCalled();
     expect(runPipeline).toHaveBeenCalledWith({ question: "best customer" }, emit);
+  });
+
+  it("reads a follow-up against the earlier question", async () => {
+    clarify.mockResolvedValue(reply({ status: "ask", message: "?" }));
+    const context = [{ question: "how many customers", resolvedQuestion: "How many customers are there?" }];
+
+    await runAgentTurn({ question: "do we have email for all?", history: [], context }, emit);
+
+    expect(selectSchema).toHaveBeenCalledWith(
+      expect.anything(),
+      "How many customers are there?. do we have email for all?",
+    );
+    expect(clarify).toHaveBeenCalledWith("do we have email for all?", expect.anything(), [], context);
+  });
+
+  it("keeps a follow-up's subject when the clarifier is unavailable", async () => {
+    clarify.mockRejectedValue(new Error("404"));
+    const context = [{ question: "how many customers", resolvedQuestion: "How many customers are there?" }];
+
+    await runAgentTurn({ question: "do we have email for all?", history: [], context }, emit);
+
+    expect(runPipeline).toHaveBeenCalledWith(
+      { question: "do we have email for all? (follow-up to: How many customers are there?)" },
+      emit,
+    );
+  });
+
+  it("only sends the most recent earlier questions", async () => {
+    clarify.mockResolvedValue(reply({ status: "ask", message: "?" }));
+    const context = ["a", "b", "c", "d", "e"].map((q) => ({ question: q, resolvedQuestion: q.toUpperCase() }));
+
+    await runAgentTurn({ question: "and then?", history: [], context }, emit);
+
+    expect(clarify.mock.calls[0][3]).toEqual(context.slice(-3));
   });
 
   it("rejects an empty question", async () => {

@@ -52,6 +52,16 @@ class ChatTurn(BaseModel):
     content: str = Field(min_length=1, max_length=2_000)
 
 
+class PriorExchange(BaseModel):
+    """An earlier question in the same agent-talk conversation, already
+    answered. The question as asked plus the self-contained form it was run
+    as — never its result: rows stay on the user's machine, so a follow-up
+    is resolved from what was asked, not from what came back."""
+
+    question: str = Field(min_length=1, max_length=2_000)
+    resolved_question: str = Field(min_length=1, max_length=2_000)
+
+
 class ClarifyRequest(BaseModel):
     """
     Agent-talk input: the original question, the pruned schema blueprint,
@@ -64,6 +74,9 @@ class ClarifyRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2_000)
     schema_ddl: list[str] = Field(min_length=1, max_length=80)
     history: list[ChatTurn] = Field(default_factory=list, max_length=12)
+    # Earlier questions this one may follow up on ("do we have email for
+    # all?" after "how many customers do we have?"), oldest first.
+    context: list[PriorExchange] = Field(default_factory=list, max_length=6)
 
     @field_validator("question")
     @classmethod

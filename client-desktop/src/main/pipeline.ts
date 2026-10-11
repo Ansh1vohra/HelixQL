@@ -12,6 +12,7 @@ import { blueprintFor } from "./db/ddl";
 import { semanticScores } from "./db/embeddings";
 import { linkSchema } from "./db/linker";
 import { pruneSchema } from "./db/rag";
+import { matchSchemaQuestion, schemaAnswerGrid } from "./db/schemaQuestion";
 import { AppError } from "./errors";
 import * as gateway from "./gateway";
 
@@ -103,6 +104,33 @@ export async function runPipeline(request: PipelineRequest, emit: Emit): Promise
   const started = Date.now();
   const { driver, config } = requireActive();
   const blueprint = getBlueprint();
+
+  // "What columns does users have?" is answered from the local blueprint —
+  // the translator only sees the user's tables, so it cannot. See
+  // `db/schemaQuestion.ts`.
+  const schemaQuestion = matchSchemaQuestion(question, blueprint);
+  if (schemaQuestion) {
+    const result = schemaAnswerGrid(schemaQuestion, blueprint);
+    const tables = schemaQuestion.kind === "columns" ? schemaQuestion.tables.map((table) => table.name) : [];
+    emit({ step: "done", message: `Read ${result.rows.length} rows from the local schema` });
+
+    return {
+      question,
+      sql: "-- Answered from the local schema snapshot.\n-- No model call and no database query were made.",
+      dialect: config.dialect,
+      attempts: 1,
+      tables,
+      limitApplied: null,
+      caseInsensitiveColumns: [],
+      schemaTablesSent: [],
+      result,
+      rowCount: result.rows.length,
+      plan: { columns: [], rows: [] },
+      timings: { schemaMs: 0, translateMs: 0, explainMs: 0, executeMs: 0, totalMs: Date.now() - started },
+      usage: null,
+      repairs: [],
+    };
+  }
 
   // --- Step 3: local metadata RAG -------------------------------------
   const schemaStart = Date.now();

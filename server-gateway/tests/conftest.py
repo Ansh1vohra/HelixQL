@@ -81,11 +81,18 @@ class FakeLlm:
         schema_ddl: list[str],
         history: list[tuple[str, str]],
         max_turns: int,
+        context: list[tuple[str, str]] | None = None,
     ) -> ClarifyResponse:
         """Replays raw model text through the production parser, for the
         same reason `translate` runs `_clean_sql`."""
         self.clarify_calls.append(
-            {"question": question, "schema_ddl": schema_ddl, "history": history, "max_turns": max_turns}
+            {
+                "question": question,
+                "schema_ddl": schema_ddl,
+                "history": history,
+                "max_turns": max_turns,
+                "context": context or [],
+            }
         )
         raw = self.clarify_responses.pop(0) if self.clarify_responses else '{"status": "ready", "resolved_question": "q"}'
         if isinstance(raw, Exception):

@@ -76,7 +76,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (session: SessionInfo)
           <button
             type="button"
             onClick={() => setShowEndpoints((open) => !open)}
-            className="text-[11px] text-slate-500 transition hover:text-slate-700"
+            className="text-2xs text-slate-500 transition hover:text-slate-700"
           >
             {showEndpoints ? "− Hide" : "+ Show"} server settings
           </button>
@@ -98,7 +98,7 @@ export function LoginScreen({ onSignedIn }: { onSignedIn: (session: SessionInfo)
           )}
         </div>
 
-        <p className="mt-6 text-center text-[11px] leading-relaxed text-slate-400">
+        <p className="mt-6 text-center text-2xs leading-relaxed text-slate-400">
           Database credentials are entered after sign-in and never leave this machine.
         </p>
       </div>

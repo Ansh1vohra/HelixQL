@@ -153,13 +153,14 @@ class GroqSynthesisEngine:
         schema_ddl: list[str],
         history: list[tuple[str, str]],
         max_turns: int,
+        context: list[tuple[str, str]] | None = None,
     ) -> ClarifyResponse:
         turns_used = sum(1 for role, _ in history if role == "assistant")
         raw = await self._call_model(
             CLARIFIER_SYSTEM_INSTRUCTION,
-            build_clarify_prompt(question, schema_ddl, history, turns_used, max_turns),
+            build_clarify_prompt(question, schema_ddl, history, turns_used, max_turns, context),
         )
-        return parse_clarification(raw, question, history, budget_spent=turns_used >= max_turns)
+        return parse_clarification(raw, question, history, budget_spent=turns_used >= max_turns, context=context)
 
     async def aclose(self) -> None:
         await self._http.aclose()

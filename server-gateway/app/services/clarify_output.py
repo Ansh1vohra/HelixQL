@@ -21,14 +21,23 @@ MAX_OPTION_LENGTH = 120
 MAX_MESSAGE_LENGTH = 500
 
 
-def fallback_question(question: str, history: list[tuple[str, str]]) -> str:
+def fallback_question(
+    question: str,
+    history: list[tuple[str, str]],
+    context: list[tuple[str, str]] | None = None,
+) -> str:
     """The original question with the user's replies appended, for when the
     model's own resolution is unusable. Crude, but it loses nothing the user
-    said, and the translator reads it fine."""
+    said, and the translator reads it fine. A follow-up also names the
+    question it follows, since on its own "do we have email for all?" has
+    no subject."""
     answers = [content.strip() for role, content in history if role == "user" and content.strip()]
-    if not answers:
-        return question.strip()
-    return f"{question.strip()} ({'; '.join(answers)})"
+    text = question.strip()
+    if answers:
+        text = f"{text} ({'; '.join(answers)})"
+    if context:
+        text = f"{text} (follow-up to: {context[-1][1].strip()})"
+    return text
 
 
 def _extract_object(text: str) -> dict[str, Any] | None:
@@ -61,6 +70,7 @@ def parse_clarification(
     question: str,
     history: list[tuple[str, str]],
     budget_spent: bool,
+    context: list[tuple[str, str]] | None = None,
 ) -> ClarifyResponse:
     """
     Turn the model's JSON reply into a response the client can act on.
@@ -69,7 +79,7 @@ def parse_clarification(
     the question budget is used up, an "ask" is converted to "ready", so an
     unmetered endpoint cannot be walked into an endless interview.
     """
-    ready_fallback = ClarifyResponse(status="ready", resolved_question=fallback_question(question, history))
+    ready_fallback = ClarifyResponse(status="ready", resolved_question=fallback_question(question, history, context))
 
     parsed = _extract_object(text)
     if parsed is None:

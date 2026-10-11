@@ -48,6 +48,11 @@ functions and its quoting style for identifiers.
 
 RESULT SHAPE:
 - Give computed columns readable aliases (e.g. AS total_orders).
+- Answer a yes/no question about whether data exists ("do we have any
+  reviews?", "are there orders from Pune?") with a COUNT and a descriptive
+  alias (e.g. AS review_count). Never return EXISTS, a 1/0 flag, or a
+  LIMIT 1 probe: the user reads a lone 1 as "one", and a count answers
+  both "whether" and "how many".
 - Apply ORDER BY when the question implies a ranking ("most", "top",
   "highest", "latest").
 - Apply a sensible LIMIT when the question asks for a small number of rows.
@@ -181,6 +186,9 @@ WHEN TO ASK:
   descending order for "best", "most", or "top". List these as assumptions.
 - If the schema supports only one reading, do not ask — use it, and state
   it as an assumption.
+- A yes/no question about whether data exists ("do we have any reviews?")
+  is not ambiguous: resolve it to the matching count ("How many reviews
+  are there?"), which answers both whether and how many.
 - Never ask the same thing twice. Treat each user reply as final.
 
 SCHEMA RULES — these are what keep your questions honest:
@@ -191,6 +199,18 @@ SCHEMA RULES — these are what keep your questions honest:
 - If nothing in the schema comes close, reply unanswerable.
 - You cannot see values. Never list data values (regions, product names,
   statuses) as options — ask the user to type the value instead.
+
+FOLLOW-UP QUESTIONS:
+- The question may follow up on EARLIER QUESTIONS listed in the prompt.
+  Resolve words like "them", "those", "all", "each", "it", "same", and
+  "that" against those questions. After "How many customers do we have?",
+  "do we have email for all?" means: how many customers have an email
+  address, compared with the total number of customers.
+- Carry over the subject, filters, and time window of the earlier question
+  unless the new question changes them.
+- You are never shown earlier answers — result values stay on the user's
+  machine. Never guess or restate them.
+- If the new question is clearly unrelated, ignore the earlier ones.
 
 STYLE:
 - Speak in plain business language, not table or column names.
@@ -203,8 +223,10 @@ OUTPUT CONTRACT — reply with exactly one JSON object and nothing else:
 
 For "ready", resolved_question must be one self-contained English question
 that folds in every answer the user gave: the exact metric, grouping,
-ranking direction, time window, filters, and row count. It is handed to a
-SQL translator that will not see this conversation.
+ranking direction, time window, filters, and row count. For a follow-up it
+also folds in whatever the question borrows from the earlier ones, so it
+never says "them" or "the above". It is handed to a SQL translator that
+will not see this conversation.
 """
 
 
@@ -214,10 +236,12 @@ def build_clarify_prompt(
     history: list[tuple[str, str]],
     turns_used: int,
     max_turns: int,
+    context: list[tuple[str, str]] | None = None,
 ) -> str:
     """
-    Assemble the clarification turn: blueprint, original question, the
-    conversation so far, and the remaining question budget.
+    Assemble the clarification turn: blueprint, earlier questions this one
+    may follow up on, the question itself, the conversation so far, and the
+    remaining question budget.
 
     The conversation is rendered into one prompt rather than sent as chat
     messages so both providers see the identical text, and so the model
@@ -239,10 +263,18 @@ def build_clarify_prompt(
     else:
         budget = f"You have asked {turns_used} of {max_turns} questions."
 
+    earlier = ""
+    if context:
+        lines = "\n".join(
+            f"{index}. Asked: {asked.strip()}\n   Ran as: {resolved.strip()}"
+            for index, (asked, resolved) in enumerate(context, start=1)
+        )
+        earlier = f"EARLIER QUESTIONS (already answered, oldest first):\n{lines}\n\n"
+
     return f"""SCHEMA BLUEPRINT:
 {blueprint}
 
-ORIGINAL QUESTION:
+{earlier}ORIGINAL QUESTION:
 {question}
 
 CONVERSATION SO FAR:

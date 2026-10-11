@@ -25,6 +25,8 @@ function errorTitle(code: string): string {
       return "Not answerable from this schema";
     case "QUERY_LIMIT_EXCEEDED":
       return "Monthly query limit reached";
+    case "SELF_HEAL_EXHAUSTED":
+      return "Self-correction couldn't fix the query";
     default:
       return "Query failed";
   }
@@ -126,23 +128,24 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
   }
 
   const latestEvent = events[events.length - 1];
+  const repairCount = events.filter((event) => event.step === "repairing").length;
 
   return (
     <div className="flex h-screen flex-col bg-white text-slate-800">
       <header className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-2.5">
         <div className="flex items-baseline gap-3">
           <span className="text-sm font-bold tracking-tight text-brand-600">HelixQL</span>
-          <span className="text-[11px] text-slate-400">
+          <span className="text-2xs text-slate-400">
             {status.connected ? `${status.dialect} · ${status.database}` : "not connected"}
           </span>
         </div>
         <div className="flex items-center gap-3">
           {usage && (
-            <span className="text-[11px] text-slate-500">
+            <span className="text-2xs text-slate-500">
               {usage.remaining} of {usage.monthlyQueryLimit} queries left
             </span>
           )}
-          <span className="text-[11px] text-slate-500">{session.email}</span>
+          <span className="text-2xs text-slate-500">{session.email}</span>
           <Button variant="ghost" onClick={handleSignOut}>
             Sign out
           </Button>
@@ -150,7 +153,7 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200">
+        <aside className="flex w-80 shrink-0 flex-col border-r border-slate-200">
           <div className="flex shrink-0 border-b border-slate-200">
             {(["connection", "schema"] as const).map((tab) => (
               <button
@@ -188,7 +191,7 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
                   key={option}
                   type="button"
                   onClick={() => setMode(option)}
-                  className={`rounded px-2.5 py-1 text-[11px] font-medium transition ${
+                  className={`rounded px-2.5 py-1 text-2xs font-medium transition ${
                     mode === option
                       ? "bg-brand-100 text-brand-700"
                       : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
@@ -205,7 +208,7 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
               <AgentChat
                 connected={status.connected}
                 running={running}
-                progress={latestEvent?.message}
+                progress={latestEvent}
                 execute={execute}
               />
             </div>
@@ -239,7 +242,7 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
 
             {mode !== "agent" && (
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">
+                <span className="text-2xs text-slate-400">
                   {mode === "ask"
                     ? "Enter to run · results stay on this machine"
                     : "Read-only SELECT queries only · ⌘/Ctrl+Enter to run · not counted against your plan"}
@@ -247,7 +250,11 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
 
                 <div className="flex items-center gap-3">
                   {running && latestEvent && (
-                    <span className="animate-pulse text-[11px] text-brand-600">{latestEvent.message}</span>
+                    <span
+                      className={`animate-pulse text-2xs ${repairCount > 0 ? "text-amber-600" : "text-brand-600"}`}
+                    >
+                      {latestEvent.message}
+                    </span>
                   )}
                   <Button onClick={handleRun} disabled={!canRun}>
                     {running ? "Running…" : mode === "ask" ? "Run analysis" : "Run query"}
@@ -264,14 +271,28 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
           )}
 
           {/* The bifurcated workspace (FR-2.6): records on one side,
-              optimizer diagnostics on the other. */}
-          <div className="grid min-h-0 flex-1 grid-cols-2 gap-3">
+              optimizer diagnostics on the other. minmax(0, …) lets each
+              column shrink below its content — a bare `3fr` has a
+              min-content floor, so a wide SQL block or result row would
+              widen the grid past the window and scroll the whole app
+              sideways instead of scrolling inside its panel. */}
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-3">
             <Panel
               title="Results"
               actions={
                 result && (
-                  <span className="text-[11px] text-slate-500">
-                    {result.rowCount} row{result.rowCount === 1 ? "" : "s"}
+                  <span className="flex items-center gap-2">
+                    {result.repairs.length > 0 && (
+                      <span
+                        className="rounded-full bg-amber-100 px-2 py-0.5 text-2xs font-medium text-amber-700"
+                        title="The database rejected the first query and the model corrected it — see Diagnostics"
+                      >
+                        Self-corrected · {result.repairs.length + 1} attempts
+                      </span>
+                    )}
+                    <span className="text-2xs text-slate-500">
+                      {result.rowCount} row{result.rowCount === 1 ? "" : "s"}
+                    </span>
                   </span>
                 )
               }
@@ -283,7 +304,7 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
             </Panel>
 
             <Panel title="Diagnostics">
-              <DiagnosticsPanel result={result} />
+              <DiagnosticsPanel result={result} events={events} running={running} />
             </Panel>
           </div>
         </main>
