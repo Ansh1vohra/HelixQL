@@ -38,6 +38,7 @@ def test_the_route_surface_is_exactly_what_is_expected():
         "/v1/embed",
         "/v1/link-schema",
         "/v1/clarify",
+        "/v1/beta/write-plan",
     }
 
 
@@ -170,3 +171,26 @@ def test_clarify_ignores_a_payload_carrying_rows(client, fake_llm):
     assert response.status_code == 200
     assert "Asha" not in str(fake_llm.clarify_calls)
     assert "asha@example.com" not in str(fake_llm.clarify_calls)
+
+
+def test_write_plan_accepts_no_field_that_could_carry_rows():
+    """Beta write planning takes the same content class as clarify: the
+    question, empty structure, and what the user typed. Values to write are
+    the user's own words; there is no field for rows read from the database."""
+    from app.schemas import WritePlanRequest
+
+    assert set(WritePlanRequest.model_fields) == {"question", "schema_ddl", "history", "context"}
+
+
+def test_write_plan_ignores_a_payload_carrying_rows(client, fake_llm):
+    response = client.post(
+        "/v1/beta/write-plan",
+        json={
+            "question": "add a customer",
+            "schema_ddl": TEST_SCHEMA,
+            "rows": [{"name": "Asha", "email": "asha@example.com"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "asha@example.com" not in str(fake_llm.write_calls)

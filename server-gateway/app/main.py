@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from app.clients.control_plane import ControlPlaneClient
 from app.config import get_settings
 from app.errors import GatewayError
-from app.routers import embeddings, translate
+from app.routers import beta, embeddings, translate
 from app.services.embeddings import create_embedder
 from app.services.llm import create_engine
 
@@ -96,3 +96,4 @@ def health() -> dict[str, str]:
 
 app.include_router(translate.router)
 app.include_router(embeddings.router)
+app.include_router(beta.router)

@@ -214,3 +214,83 @@ class EmbedResponse(BaseModel):
     vectors: list[list[float]]
     model: str
     dimensions: int
+
+
+# --- Beta: write planning -------------------------------------------------
+
+WriteOperation = Literal["insert", "update", "delete"]
+WhereOperator = Literal["=", "!=", "<", "<=", ">", ">=", "like", "in", "is null", "is not null"]
+
+# A literal the user typed. Lists only for `in`. Never a row read from the
+# database — the planner has no way to see one.
+WriteValue = str | int | float | bool | None
+
+
+class WhereCondition(BaseModel):
+    column: str = Field(min_length=1, max_length=128)
+    op: WhereOperator
+    value: WriteValue | list[str | int | float] = None
+
+
+class WritePlan(BaseModel):
+    """
+    A write described as data, never as SQL.
+
+    The model fills this in; the desktop client checks every table, column,
+    and value against the live schema, then builds a parameterized statement
+    itself. A plan cannot carry a subquery, a function call, or a second
+    statement, because there is nowhere in this shape to put one.
+    """
+
+    operation: WriteOperation
+    table: str = Field(min_length=1, max_length=128)
+    # insert: the row; update: the new values. Unused for delete.
+    values: dict[str, WriteValue] = Field(default_factory=dict, max_length=200)
+    # update/delete only. ANDed together.
+    where: list[WhereCondition] = Field(default_factory=list, max_length=20)
+
+
+class WritePlanRequest(BaseModel):
+    """
+    Beta write mode: one turn of a conversation that ends in an insert,
+    update, or delete plan — or reports that the question is a read.
+
+    Same content class as `/v1/clarify`: the question, empty table structure,
+    and text the user typed. Values to write are what the user typed; nothing
+    here can carry a row read from their database.
+    """
+
+    question: str = Field(min_length=1, max_length=2_000)
+    schema_ddl: list[str] = Field(min_length=1, max_length=80)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=24)
+    # Earlier requests in the same thread, so "now change his phone" knows
+    # who "his" is. Each is what was asked and a summary of what was done,
+    # built from the plan — the user's own values, never rows read back.
+    context: list[PriorExchange] = Field(default_factory=list, max_length=6)
+
+    @field_validator("question")
+    @classmethod
+    def _reject_blank_question(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("question must not be blank")
+        return value
+
+    @field_validator("schema_ddl")
+    @classmethod
+    def _reject_oversized_ddl(cls, value: list[str]) -> list[str]:
+        return _check_schema_ddl(value)
+
+
+class WritePlanResponse(BaseModel):
+    """
+    - `read`: not a write; the client runs it as an ordinary question.
+    - `ask`: `message` asks the user for something, `options` suggest replies.
+    - `ready`: `plan` is complete as far as the model can tell. The client
+      still validates it and may ask for more.
+    - `unanswerable`: `message` says why the write cannot be done.
+    """
+
+    status: Literal["read", "ask", "ready", "unanswerable"]
+    message: str = ""
+    options: list[str] = []
+    plan: WritePlan | None = None

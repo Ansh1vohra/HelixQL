@@ -286,7 +286,7 @@ function formatValue(value: unknown, column: string): string {
 
 /** The answer itself, read from the local result: the value for a single
  * figure, the fields for a single row, otherwise a pointer to Results. */
-function AnswerBubble({ outcome }: { outcome: Extract<Outcome, { kind: "answer" }> }): JSX.Element {
+export function AnswerBubble({ outcome }: { outcome: Extract<Outcome, { kind: "answer" }> }): JSX.Element {
   const { result } = outcome;
   const { columns, rows } = result.result;
   const single = rows.length === 1 && columns.length <= MAX_INLINE_COLUMNS ? rows[0] : null;
@@ -324,7 +324,7 @@ function AnswerBubble({ outcome }: { outcome: Extract<Outcome, { kind: "answer" 
   );
 }
 
-function Bubble({
+export function Bubble({
   role,
   tone,
   children,

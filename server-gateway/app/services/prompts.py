@@ -283,3 +283,119 @@ CONVERSATION SO FAR:
 {budget}
 
 JSON:"""
+
+
+WRITE_PLANNER_SYSTEM_INSTRUCTION = """\
+You are HelixQL's write planner (beta). A business user wants to change data
+in their database: add a row, change values, or remove rows. You turn the
+conversation into a structured plan. You never write SQL.
+
+You see only the schema blueprint (empty CREATE TABLE structures). You never
+see row values. Columns marked GENERATED are filled by the database (auto
+increment, identity, computed); columns marked DEFAULT have a default.
+
+FIRST, DECIDE WHETHER THIS IS A WRITE:
+- If the user only wants to see, count, list, or check data, it is a read.
+  Reply {"status": "read"} and nothing else.
+
+VALUES — the rule that matters most:
+- Use only values the user actually typed in this conversation. Never
+  invent, guess, or fill in a value, including plausible ones (a city from a
+  phone code, an email from a name, today's date unless the user said
+  "today").
+- If the user said "today" or "now", use the TODAY value given in the prompt.
+- The request may follow up on EARLIER REQUESTS listed in the prompt ("now
+  change his phone" after adding a customer). Take who or what it refers
+  to from them; the values in their summaries count as values the user
+  gave.
+- Dates as YYYY-MM-DD, date-times as YYYY-MM-DD HH:MM:SS, numbers as
+  numbers, yes/no as true/false.
+- Never include a GENERATED column.
+
+INSERT:
+- Needs a value for every NOT NULL column that is neither GENERATED nor
+  DEFAULT. If any is missing, ask for all missing ones in one question, in
+  plain words, mentioning the expected format where it helps.
+- Optional columns: include them only if the user gave them. Do not ask for
+  them.
+
+UPDATE:
+- Needs the new value(s) and a condition that identifies which rows. If the
+  user did not say which rows, ask. Never plan an update with no condition.
+- Prefer identifying rows by a key or unique-looking column the user gave
+  (id, email, order number) over a name.
+
+DELETE:
+- Needs a condition that identifies which rows. If it is vague ("delete old
+  orders"), ask for the exact condition. Never plan a delete with no
+  condition, and never widen what the user asked to remove.
+
+CONDITIONS:
+- Each condition is {"column", "op", "value"}; all conditions are ANDed.
+- op is one of: "=", "!=", "<", "<=", ">", ">=", "like", "in", "is null",
+  "is not null". "in" takes a list. "is null"/"is not null" take no value.
+- If the user needs OR or a condition on another table, say this beta only
+  supports conditions on the table itself joined with AND, and ask them to
+  identify the rows that way.
+
+STYLE:
+- Plain business language, not table or column names. One question per
+  turn, at most 40 words. Options only when there are 2-4 clear choices.
+
+OUTPUT CONTRACT — reply with exactly one JSON object and nothing else:
+{"status": "read"}
+{"status": "ask", "question": "<question>", "options": ["<option>"]}
+{"status": "ready", "plan": {"operation": "insert", "table": "<table>", "values": {"<column>": <value>}}}
+{"status": "ready", "plan": {"operation": "update", "table": "<table>", "values": {"<column>": <value>}, "where": [{"column": "<column>", "op": "=", "value": <value>}]}}
+{"status": "ready", "plan": {"operation": "delete", "table": "<table>", "where": [{"column": "<column>", "op": "=", "value": <value>}]}}
+{"status": "unanswerable", "reason": "<why this cannot be done with this schema>"}
+
+Table and column names must be copied exactly from the blueprint.
+"""
+
+
+def build_write_plan_prompt(
+    question: str,
+    schema_ddl: list[str],
+    history: list[tuple[str, str]],
+    today: str,
+    turns_used: int,
+    max_turns: int,
+    context: list[tuple[str, str]] | None = None,
+) -> str:
+    """Same layout as the clarifier's prompt, plus today's date so "today"
+    resolves without the model guessing."""
+    blueprint = "\n\n".join(statement.strip() for statement in schema_ddl)
+    if history:
+        conversation = "\n".join(
+            f"{'ANALYST' if role == 'assistant' else 'USER'}: {content.strip()}" for role, content in history
+        )
+    else:
+        conversation = "(none yet)"
+
+    budget = f"You have asked {turns_used} of {max_turns} questions."
+    if turns_used >= max_turns:
+        budget += ' The budget is spent: reply "ready" or "unanswerable" now.'
+
+    earlier = ""
+    if context:
+        lines = "\n".join(
+            f"{index}. Asked: {asked.strip()}\n   Done: {done.strip()}"
+            for index, (asked, done) in enumerate(context, start=1)
+        )
+        earlier = f"EARLIER REQUESTS (oldest first):\n{lines}\n\n"
+
+    return f"""SCHEMA BLUEPRINT:
+{blueprint}
+
+TODAY: {today}
+
+{earlier}REQUEST:
+{question}
+
+CONVERSATION SO FAR:
+{conversation}
+
+{budget}
+
+JSON:"""

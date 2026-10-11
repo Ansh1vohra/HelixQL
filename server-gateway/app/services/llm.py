@@ -16,18 +16,21 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from app.config import Settings
 from app.errors import LlmUnavailableError, TranslationError
-from app.schemas import ClarifyResponse
+from app.schemas import ClarifyResponse, WritePlanResponse
 from app.services.clarify_output import parse_clarification
 from app.services.prompts import (
     CLARIFIER_SYSTEM_INSTRUCTION,
     REPAIR_SYSTEM_INSTRUCTION,
     SCHEMA_LINKER_SYSTEM_INSTRUCTION,
     TRANSLATOR_SYSTEM_INSTRUCTION,
+    WRITE_PLANNER_SYSTEM_INSTRUCTION,
     build_clarify_prompt,
     build_repair_prompt,
     build_schema_link_prompt,
     build_translation_prompt,
+    build_write_plan_prompt,
 )
+from app.services.write_plan_output import parse_write_plan
 from app.services.sql_output import clean_sql, parse_table_list, strip_code_fences
 
 logger = logging.getLogger(__name__)
@@ -193,6 +196,22 @@ class GeminiSynthesisEngine:
         )
         return parse_clarification(raw, question, history, budget_spent=turns_used >= max_turns, context=context)
 
+    async def plan_write(
+        self,
+        question: str,
+        schema_ddl: list[str],
+        history: list[tuple[str, str]],
+        today: str,
+        max_turns: int,
+        context: list[tuple[str, str]] | None = None,
+    ) -> WritePlanResponse:
+        turns_used = sum(1 for role, _ in history if role == "assistant")
+        config = self._config(WRITE_PLANNER_SYSTEM_INSTRUCTION)
+        raw = await self._call_model(
+            build_write_plan_prompt(question, schema_ddl, history, today, turns_used, max_turns, context), config
+        )
+        return parse_write_plan(raw, budget_spent=turns_used >= max_turns)
+
 
 # --- Provider selection ---------------------------------------------------
 
@@ -226,6 +245,16 @@ class SynthesisEngine(Protocol):
         max_turns: int,
         context: list[tuple[str, str]] | None = None,
     ) -> ClarifyResponse: ...
+
+    async def plan_write(
+        self,
+        question: str,
+        schema_ddl: list[str],
+        history: list[tuple[str, str]],
+        today: str,
+        max_turns: int,
+        context: list[tuple[str, str]] | None = None,
+    ) -> WritePlanResponse: ...
 
 
 def create_engine(settings: Settings) -> SynthesisEngine:

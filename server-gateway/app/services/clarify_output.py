@@ -9,6 +9,7 @@ path a question took before agent talk existed.
 
 import json
 import logging
+import re
 from typing import Any
 
 from app.schemas import ClarifyResponse
@@ -19,6 +20,8 @@ logger = logging.getLogger(__name__)
 MAX_OPTIONS = 4
 MAX_OPTION_LENGTH = 120
 MAX_MESSAGE_LENGTH = 500
+
+_STRAY_EMPTY_LIST = re.compile(r"([}\]])\s*\[\s*\]")
 
 
 def fallback_question(
@@ -50,7 +53,15 @@ def _extract_object(text: str) -> dict[str, Any] | None:
     try:
         parsed = json.loads(body[start : end + 1])
     except json.JSONDecodeError:
-        return None
+        # Small local models sometimes emit a stray empty list straight after
+        # a closing brace or bracket (`..."plan": {...}[]}`) — never valid
+        # JSON there, so removing it cannot change a well-formed reply. Then
+        # take the first complete object, ignoring anything after it.
+        repaired = _STRAY_EMPTY_LIST.sub(r"\1", body[start:])
+        try:
+            parsed, _ = json.JSONDecoder().raw_decode(repaired)
+        except json.JSONDecodeError:
+            return None
     return parsed if isinstance(parsed, dict) else None
 
 

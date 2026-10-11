@@ -18,18 +18,21 @@ from tenacity import RetryCallState, retry, retry_if_exception_type, stop_after_
 
 from app.config import Settings
 from app.errors import LlmUnavailableError, TranslationError
-from app.schemas import ClarifyResponse
+from app.schemas import ClarifyResponse, WritePlanResponse
 from app.services.clarify_output import parse_clarification
 from app.services.prompts import (
     CLARIFIER_SYSTEM_INSTRUCTION,
     REPAIR_SYSTEM_INSTRUCTION,
     SCHEMA_LINKER_SYSTEM_INSTRUCTION,
     TRANSLATOR_SYSTEM_INSTRUCTION,
+    WRITE_PLANNER_SYSTEM_INSTRUCTION,
     build_clarify_prompt,
     build_repair_prompt,
     build_schema_link_prompt,
     build_translation_prompt,
+    build_write_plan_prompt,
 )
+from app.services.write_plan_output import parse_write_plan
 from app.services.sql_output import clean_sql, parse_table_list
 
 logger = logging.getLogger(__name__)
@@ -220,6 +223,22 @@ class GroqSynthesisEngine:
             build_clarify_prompt(question, schema_ddl, history, turns_used, max_turns, context),
         )
         return parse_clarification(raw, question, history, budget_spent=turns_used >= max_turns, context=context)
+
+    async def plan_write(
+        self,
+        question: str,
+        schema_ddl: list[str],
+        history: list[tuple[str, str]],
+        today: str,
+        max_turns: int,
+        context: list[tuple[str, str]] | None = None,
+    ) -> WritePlanResponse:
+        turns_used = sum(1 for role, _ in history if role == "assistant")
+        raw = await self._call_model(
+            WRITE_PLANNER_SYSTEM_INSTRUCTION,
+            build_write_plan_prompt(question, schema_ddl, history, today, turns_used, max_turns, context),
+        )
+        return parse_write_plan(raw, budget_spent=turns_used >= max_turns)
 
     async def aclose(self) -> None:
         await self._http.aclose()

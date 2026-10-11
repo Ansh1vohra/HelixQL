@@ -7,6 +7,9 @@ import type {
   IpcResult,
   AgentTurnRequest,
   AgentTurnResult,
+  BetaTurnRequest,
+  BetaTurnResult,
+  WriteOutcome,
   PipelineEvent,
   PipelineRequest,
   PipelineResult,
@@ -59,6 +62,12 @@ const api: HelixApi = {
         ipcRenderer.removeListener("pipeline:event", listener);
       };
     },
+  },
+  beta: {
+    turn: (request: BetaTurnRequest): Promise<IpcResult<BetaTurnResult>> => ipcRenderer.invoke("beta:turn", request),
+    confirm: (request: { planId: string; typed?: string }): Promise<IpcResult<WriteOutcome>> =>
+      ipcRenderer.invoke("beta:confirm", request),
+    cancel: (request: { planId: string }): Promise<IpcResult<null>> => ipcRenderer.invoke("beta:cancel", request),
   },
 };
 

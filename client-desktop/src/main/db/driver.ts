@@ -11,11 +11,39 @@ import { QUERY_TIMEOUT_MS } from "../config";
  * database except through the IPC handlers that call into this file.
  */
 
+export interface WriteResult {
+  affectedRows: number;
+  insertId: string | null;
+}
+
 export interface Driver {
   introspect(): Promise<TableInfo[]>;
   explain(sql: string): Promise<ResultGrid>;
   execute(sql: string): Promise<ResultGrid>;
+  /** Parameterized read, same read-only transaction as `execute`. Beta
+   * mode uses it to preview the rows a write would touch. */
+  query(sql: string, params: unknown[]): Promise<ResultGrid>;
+  /**
+   * Beta mode only: the one path in this app that can change data.
+   *
+   * Runs one parameterized statement in a read-write transaction and
+   * commits only if it touched exactly `expectedRows` rows. Anything else —
+   * the data changed since the user saw the preview, or the statement
+   * matched more than it showed — rolls back. Every other method stays in
+   * a read-only transaction.
+   */
+  write(sql: string, params: unknown[], expectedRows: number): Promise<WriteResult>;
   close(): Promise<void>;
+}
+
+/** Thrown by `write` when the row count disagrees with the preview. */
+export class RowCountMismatchError extends Error {
+  constructor(
+    readonly expected: number,
+    readonly actual: number,
+  ) {
+    super(`Expected to change ${expected} row(s) but the statement matched ${actual}; nothing was changed.`);
+  }
 }
 
 function toGrid(rows: Record<string, unknown>[]): ResultGrid {
@@ -112,7 +140,10 @@ class MySqlDriver implements Driver {
                 c.COLUMN_TYPE  AS column_type,
                 c.COLLATION_NAME AS collation_name,
                 c.IS_NULLABLE  AS is_nullable,
-                c.COLUMN_KEY   AS column_key
+                c.COLUMN_KEY   AS column_key,
+                c.COLUMN_DEFAULT AS column_default,
+                c.EXTRA        AS extra,
+                t.TABLE_TYPE   AS table_type
            FROM information_schema.COLUMNS c
            JOIN information_schema.TABLES t
              ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME
@@ -140,7 +171,15 @@ class MySqlDriver implements Driver {
       const withTypes = columnRows.map((row) => {
         const collation = row.collation_name ? String(row.collation_name) : "";
         const caseSensitive = collation !== "" && !collation.toLowerCase().endsWith("_ci");
-        return { ...row, data_type: caseSensitive ? `${row.column_type} COLLATE ${collation}` : row.column_type };
+        const extra = String(row.extra ?? "").toLowerCase();
+        return {
+          ...row,
+          data_type: caseSensitive ? `${row.column_type} COLLATE ${collation}` : row.column_type,
+          // `auto_increment`, or a VIRTUAL/STORED generated column.
+          generated: extra.includes("auto_increment") || / generated$/.test(extra) || extra === "generated",
+          has_default: row.column_default !== null || extra.includes("default_generated"),
+          is_view: String(row.table_type) === "VIEW",
+        };
       });
 
       return assembleTables(withTypes, fkRows, (row) => String(row.column_key) === "PRI");
@@ -161,6 +200,36 @@ class MySqlDriver implements Driver {
       const [rows] = await connection.query<mysql.RowDataPacket[]>(sql);
       return toGrid(normalizeRows((rows ?? []) as unknown as Record<string, unknown>[]));
     });
+  }
+
+  async query(sql: string, params: unknown[]): Promise<ResultGrid> {
+    return this.inReadOnlyTransaction(async (connection) => {
+      const [rows] = await connection.query<mysql.RowDataPacket[]>(sql, params);
+      return toGrid(normalizeRows((rows ?? []) as unknown as Record<string, unknown>[]));
+    });
+  }
+
+  async write(sql: string, params: unknown[], expectedRows: number): Promise<WriteResult> {
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.query("START TRANSACTION READ WRITE");
+      try {
+        // mysql2 sets CLIENT_FOUND_ROWS, so `affectedRows` counts rows
+        // matched, not only rows whose value differed — the same number the
+        // preview's COUNT(*) produced.
+        const [header] = await connection.query<mysql.ResultSetHeader>(sql, params);
+        if (header.affectedRows !== expectedRows) {
+          throw new RowCountMismatchError(expectedRows, header.affectedRows);
+        }
+        await connection.query("COMMIT");
+        return { affectedRows: header.affectedRows, insertId: header.insertId ? String(header.insertId) : null };
+      } catch (error) {
+        await connection.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      }
+    } finally {
+      connection.release();
+    }
   }
 
   async close(): Promise<void> {
@@ -221,7 +290,11 @@ class PostgresDriver implements Driver {
                 c.character_maximum_length,
                 c.numeric_precision,
                 c.numeric_scale,
-                c.is_nullable
+                c.is_nullable,
+                c.column_default,
+                c.is_identity,
+                c.is_generated,
+                t.table_type
            FROM information_schema.columns c
            JOIN information_schema.tables t
              ON t.table_schema = c.table_schema AND t.table_name = c.table_name
@@ -263,6 +336,13 @@ class PostgresDriver implements Driver {
       const withTypes = columns.rows.map((row: Record<string, unknown>) => ({
         ...row,
         data_type: formatPostgresType(row),
+        // Identity, `serial` (a nextval() default), or GENERATED ALWAYS AS.
+        generated:
+          row.is_identity === "YES" ||
+          row.is_generated === "ALWAYS" ||
+          String(row.column_default ?? "").startsWith("nextval("),
+        has_default: row.column_default !== null && row.column_default !== undefined,
+        is_view: String(row.table_type) === "VIEW",
       }));
 
       return assembleTables(withTypes, foreignKeys.rows, (row) => pkSet.has(`${row.table_name}.${row.column_name}`));
@@ -281,6 +361,37 @@ class PostgresDriver implements Driver {
       const result = await client.query(sql);
       return toGrid(normalizeRows(result.rows ?? []));
     });
+  }
+
+  async query(sql: string, params: unknown[]): Promise<ResultGrid> {
+    return this.inReadOnlyTransaction(async (client) => {
+      const result = await client.query(sql, params);
+      return toGrid(normalizeRows(result.rows ?? []));
+    });
+  }
+
+  async write(sql: string, params: unknown[], expectedRows: number): Promise<WriteResult> {
+    const client = await this.pool.connect();
+    try {
+      // With parameters, node-postgres uses the extended protocol, which
+      // accepts exactly one statement.
+      await client.query("BEGIN TRANSACTION READ WRITE");
+      try {
+        const result = await client.query(sql, params);
+        const affected = result.rowCount ?? 0;
+        if (affected !== expectedRows) {
+          throw new RowCountMismatchError(expectedRows, affected);
+        }
+        await client.query("COMMIT");
+        const returned = result.rows?.[0] ? Object.values(result.rows[0])[0] : null;
+        return { affectedRows: affected, insertId: returned === null || returned === undefined ? null : String(returned) };
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      }
+    } finally {
+      client.release();
+    }
   }
 
   async close(): Promise<void> {
@@ -311,13 +422,15 @@ function assembleTables(
   for (const row of columnRows) {
     const tableName = String(row.table_name);
     if (!tables.has(tableName)) {
-      tables.set(tableName, { name: tableName, columns: [], foreignKeys: [] });
+      tables.set(tableName, { name: tableName, columns: [], foreignKeys: [], isView: Boolean(row.is_view) });
     }
     tables.get(tableName)!.columns.push({
       name: String(row.column_name),
       dataType: String(row.data_type).toUpperCase(),
       nullable: String(row.is_nullable).toUpperCase() === "YES",
       isPrimaryKey: isPrimaryKey(row),
+      hasDefault: Boolean(row.has_default),
+      generated: Boolean(row.generated),
     });
   }
 

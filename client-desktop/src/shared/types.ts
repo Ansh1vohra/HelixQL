@@ -26,6 +26,11 @@ export interface ColumnInfo {
   dataType: string;
   nullable: boolean;
   isPrimaryKey: boolean;
+  /** Has a server-side default, so an insert may leave it out. */
+  hasDefault?: boolean;
+  /** Filled by the database (auto-increment, identity, computed) — never
+   * written by an insert or update. */
+  generated?: boolean;
 }
 
 export interface ForeignKeyInfo {
@@ -38,6 +43,8 @@ export interface TableInfo {
   name: string;
   columns: ColumnInfo[];
   foreignKeys: ForeignKeyInfo[];
+  /** Views are listed for reading but refused as write targets. */
+  isView?: boolean;
 }
 
 /**
@@ -175,6 +182,61 @@ export type AgentTurnResult =
   | { kind: "answer"; resolvedQuestion: string; assumptions: string[]; result: PipelineResult }
   | { kind: "unanswerable"; message: string };
 
+// --- Beta: write mode -----------------------------------------------------
+
+export type WriteOperation = "insert" | "update" | "delete";
+
+/** One turn of Beta mode. Like `AgentTurnRequest`, plus which track an
+ * open exchange is on: a read continues as agent talk, a write continues
+ * planning. Unset for a new question — the planner decides. */
+export interface BetaTurnRequest {
+  question: string;
+  history: ChatTurn[];
+  context?: PriorExchange[];
+  track?: "read" | "write";
+  skip?: boolean;
+}
+
+/**
+ * A write ready for the user's go-ahead. Everything shown is computed
+ * locally: the statement the app built, and the rows it would touch read
+ * from the user's own database. The statement itself stays in the main
+ * process under `planId`, so what the user confirms is exactly what runs.
+ */
+export interface WritePreview {
+  planId: string;
+  operation: WriteOperation;
+  table: string;
+  /** Plain-language description of the change. */
+  summary: string;
+  /** The statement with values inlined, for reading only — the real one is
+   * parameterized. */
+  sql: string;
+  /** Rows an update/delete will change, counted just now; 1 for an insert. */
+  affectedRows: number;
+  /** The new row (insert) or the rows that would change (update/delete). */
+  preview: ResultGrid;
+  notes: string[];
+  /** Delete only: the word the user must type to enable the button. */
+  confirmWord: string | null;
+}
+
+export type BetaTurnResult =
+  | (AgentTurnResult & { track: "read" })
+  | { kind: "ask"; track: "write"; message: string; options: string[] }
+  | { kind: "unanswerable"; track: "write"; message: string }
+  /** `result` carries the preview for the shared Results and Diagnostics
+   * panels: the rows that would change and the statement. */
+  | { kind: "confirm"; track: "write"; preview: WritePreview; result: PipelineResult };
+
+export interface WriteOutcome {
+  operation: WriteOperation;
+  table: string;
+  affectedRows: number;
+  /** Auto-generated key of an inserted row, when the database reports one. */
+  insertId: string | null;
+}
+
 export interface IpcError {
   message: string;
   code: string;
@@ -224,5 +286,14 @@ export interface HelixApi {
     agentTurn(request: AgentTurnRequest): Promise<IpcResult<AgentTurnResult>>;
     /** Returns an unsubscribe function. */
     onEvent(callback: (event: PipelineEvent) => void): () => void;
+  };
+  beta: {
+    /** One turn of Beta mode: a read runs as agent talk; a write is planned
+     * and previewed, never run. */
+    turn(request: BetaTurnRequest): Promise<IpcResult<BetaTurnResult>>;
+    /** Runs a previewed write. `typed` must match `confirmWord` for a delete. */
+    confirm(request: { planId: string; typed?: string }): Promise<IpcResult<WriteOutcome>>;
+    /** Discards a previewed write. */
+    cancel(request: { planId: string }): Promise<IpcResult<null>>;
   };
 }

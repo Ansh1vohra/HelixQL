@@ -5,6 +5,9 @@ import type {
   EndpointConfig,
   AgentTurnRequest,
   AgentTurnResult,
+  BetaTurnRequest,
+  BetaTurnResult,
+  WriteOutcome,
   PipelineEvent,
   PipelineRequest,
   PipelineResult,
@@ -13,6 +16,7 @@ import type {
   SqlRequest,
 } from "../shared/types";
 import { runAgentTurn } from "./agent";
+import { cancelWrite, confirmWrite, runBetaTurn } from "./beta";
 import { getEndpoints, setEndpoints } from "./config";
 import * as connection from "./db/connection";
 import { handled } from "./errors";
@@ -34,6 +38,9 @@ export const IPC = {
   pipelineRunSql: "pipeline:run-sql",
   pipelineAgentTurn: "pipeline:agent-turn",
   pipelineEvent: "pipeline:event",
+  betaTurn: "beta:turn",
+  betaConfirm: "beta:confirm",
+  betaCancel: "beta:cancel",
 } as const;
 
 /**
@@ -95,5 +102,20 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.pipelineAgentTurn, (event, request: AgentTurnRequest) =>
     handled<AgentTurnResult>(() => runAgentTurn(request, emitterFor(event))),
+  );
+
+  // Beta mode. The only handlers that can lead to a write, and only
+  // `betaConfirm` actually performs one — for a plan id the main process
+  // previewed itself.
+  ipcMain.handle(IPC.betaTurn, (event, request: BetaTurnRequest) =>
+    handled<BetaTurnResult>(() => runBetaTurn(request, emitterFor(event))),
+  );
+
+  ipcMain.handle(IPC.betaConfirm, (_event, request: { planId: string; typed?: string }) =>
+    handled<WriteOutcome>(() => confirmWrite(request)),
+  );
+
+  ipcMain.handle(IPC.betaCancel, (_event, request: { planId: string }) =>
+    handled<null>(async () => cancelWrite(request)),
   );
 }

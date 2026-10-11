@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ConnectionStatus, Dialect, PipelineEvent, PipelineResult, SessionInfo } from "../../../shared/types";
 import { errorCode, errorMessage, unwrap } from "../lib/ipc";
 import { AgentChat } from "./AgentChat";
+import { BetaChat } from "./BetaChat";
 import { ConnectionPanel } from "./ConnectionPanel";
 import { DataGrid } from "./DataGrid";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
@@ -10,11 +11,21 @@ import { Banner, Button, Panel } from "./ui";
 
 /** Codes that mean "the user has to do something", not "we broke". Shown as
  * an advisory rather than a red failure banner. */
-const ADVISORY_CODES = new Set(["QUESTION_UNANSWERABLE", "QUERY_LIMIT_EXCEEDED", "SECURITY_VIOLATION"]);
+const ADVISORY_CODES = new Set([
+  "QUESTION_UNANSWERABLE",
+  "QUERY_LIMIT_EXCEEDED",
+  "SECURITY_VIOLATION",
+  "WRITE_NOT_CONFIRMED",
+  "WRITE_EXPIRED",
+  "WRITE_ROWS_CHANGED",
+]);
 
-type Mode = "ask" | "agent" | "sql";
+type Mode = "ask" | "agent" | "sql" | "beta";
 
-const MODE_LABELS: Record<Mode, string> = { ask: "Ask in English", agent: "Agent talk", sql: "Write SQL" };
+const MODE_LABELS: Record<Mode, string> = { ask: "Ask in English", agent: "Agent talk", sql: "Write SQL", beta: "Beta" };
+
+/** Modes driven by a chat component rather than the shared input box. */
+const CHAT_MODES = new Set<Mode>(["agent", "beta"]);
 type SidebarTab = "connection" | "schema";
 
 function errorTitle(code: string): string {
@@ -27,6 +38,13 @@ function errorTitle(code: string): string {
       return "Monthly query limit reached";
     case "SELF_HEAL_EXHAUSTED":
       return "Self-correction couldn't fix the query";
+    case "WRITE_NOT_CONFIRMED":
+      return "Not confirmed";
+    case "WRITE_EXPIRED":
+    case "WRITE_ROWS_CHANGED":
+      return "Change not made";
+    case "WRITE_FAILED":
+      return "The database refused the change";
     default:
       return "Query failed";
   }
@@ -186,15 +204,19 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
         <main className="flex min-w-0 flex-1 flex-col gap-3 p-3">
           <div className="shrink-0 space-y-2">
             <div className="flex gap-1">
-              {(["ask", "agent", "sql"] as const).map((option) => (
+              {(["ask", "agent", "sql", "beta"] as const).map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => setMode(option)}
                   className={`rounded px-2.5 py-1 text-2xs font-medium transition ${
                     mode === option
-                      ? "bg-brand-100 text-brand-700"
-                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                      ? option === "beta"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-brand-100 text-brand-700"
+                      : option === "beta"
+                        ? "text-amber-700 hover:bg-amber-50"
+                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                   }`}
                 >
                   {MODE_LABELS[option]}
@@ -213,7 +235,11 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
               />
             </div>
 
-            {mode === "agent" ? null : mode === "ask" ? (
+            <div className={mode === "beta" ? undefined : "hidden"}>
+              <BetaChat connected={status.connected} running={running} progress={latestEvent} execute={execute} />
+            </div>
+
+            {CHAT_MODES.has(mode) ? null : mode === "ask" ? (
               <textarea
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
@@ -240,7 +266,7 @@ export function Dashboard({ session, onSignOut }: { session: SessionInfo; onSign
               />
             )}
 
-            {mode !== "agent" && (
+            {!CHAT_MODES.has(mode) && (
               <div className="flex items-center justify-between">
                 <span className="text-2xs text-slate-400">
                   {mode === "ask"

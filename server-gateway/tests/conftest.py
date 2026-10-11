@@ -19,9 +19,10 @@ from app.dependencies import (  # noqa: E402
     get_llm_engine,
 )
 from app.main import app  # noqa: E402
-from app.schemas import ClarifyResponse  # noqa: E402
+from app.schemas import ClarifyResponse, WritePlanResponse  # noqa: E402
 from app.services.clarify_output import parse_clarification  # noqa: E402
 from app.services.llm import _clean_sql  # noqa: E402
+from app.services.write_plan_output import parse_write_plan  # noqa: E402
 
 TEST_SCHEMA = ["CREATE TABLE users (id INT, name VARCHAR(100), state VARCHAR(50));"]
 
@@ -49,6 +50,8 @@ class FakeLlm:
         self.link_responses: list[list[str] | Exception] = []
         self.clarify_calls: list[dict] = []
         self.clarify_responses: list[str | Exception] = []
+        self.write_calls: list[dict] = []
+        self.write_responses: list[str | Exception] = []
 
     def _next(self) -> str:
         if not self.responses:
@@ -99,6 +102,31 @@ class FakeLlm:
             raise raw
         turns_used = sum(1 for role, _ in history if role == "assistant")
         return parse_clarification(raw, question, history, budget_spent=turns_used >= max_turns)
+
+    async def plan_write(
+        self,
+        question: str,
+        schema_ddl: list[str],
+        history: list[tuple[str, str]],
+        today: str,
+        max_turns: int,
+        context: list[tuple[str, str]] | None = None,
+    ) -> WritePlanResponse:
+        self.write_calls.append(
+            {
+                "question": question,
+                "schema_ddl": schema_ddl,
+                "history": history,
+                "today": today,
+                "max_turns": max_turns,
+                "context": context or [],
+            }
+        )
+        raw = self.write_responses.pop(0) if self.write_responses else '{"status": "read"}'
+        if isinstance(raw, Exception):
+            raise raw
+        turns_used = sum(1 for role, _ in history if role == "assistant")
+        return parse_write_plan(raw, budget_spent=turns_used >= max_turns)
 
 
 

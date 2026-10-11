@@ -126,6 +126,11 @@ class Settings(BaseSettings):
     # in the client, because clarification is unmetered.
     max_clarify_turns: int = 3
 
+    # Beta write mode: how many times the planner may ask before it gives
+    # up. Higher than clarify, because an insert can need several fields
+    # collected over a few replies.
+    max_write_turns: int = 8
+
     # Hard ceiling applied to generated SELECTs that carry no LIMIT of their
     # own, so a vague question can't pull a whole table into desktop memory.
     max_result_rows: int = 1000

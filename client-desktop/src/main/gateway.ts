@@ -1,4 +1,5 @@
 import type { ChatTurn, Dialect, PriorExchange } from "../shared/types";
+import type { WritePlan } from "./db/writePlan";
 import { getEndpoints } from "./config";
 import { AppError } from "./errors";
 import { requireApiToken } from "./session";
@@ -152,6 +153,35 @@ export function clarify(
   context: PriorExchange[] = [],
 ): Promise<ClarifyResponse> {
   return post<ClarifyResponse>("/v1/clarify", {
+    question,
+    schema_ddl: schemaDdl,
+    history,
+    context: context.map((prior) => ({ question: prior.question, resolved_question: prior.resolvedQuestion })),
+  });
+}
+
+export interface WritePlanResponse {
+  status: "read" | "ask" | "ready" | "unanswerable";
+  message: string;
+  options: string[];
+  plan: WritePlan | null;
+}
+
+/**
+ * One turn of Beta write mode. Returns a structured plan, never SQL — the
+ * client validates it against the schema and builds the statement itself
+ * (see `db/writePlan.ts`).
+ *
+ * Same content class as `clarify`: empty table structure and text the user
+ * typed. The opening turn of a write is metered like a translation.
+ */
+export function writePlan(
+  question: string,
+  schemaDdl: string[],
+  history: ChatTurn[],
+  context: PriorExchange[] = [],
+): Promise<WritePlanResponse> {
+  return post<WritePlanResponse>("/v1/beta/write-plan", {
     question,
     schema_ddl: schemaDdl,
     history,
