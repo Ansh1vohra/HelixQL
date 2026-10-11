@@ -230,6 +230,14 @@ class SynthesisEngine(Protocol):
 
 def create_engine(settings: Settings) -> SynthesisEngine:
     settings.require_provider_key()
+    if settings.llm_provider == "ollama":
+        from app.services.ollama import OllamaSynthesisEngine
+
+        logger.info(
+            "Using Ollama for SQL synthesis (model=%s, url=%s)", settings.ollama_model, settings.ollama_base_url
+        )
+        return OllamaSynthesisEngine(settings)
+
     if settings.llm_provider == "groq":
         from app.services.groq import GroqSynthesisEngine
 

@@ -146,3 +146,53 @@ def test_both_engines_expose_the_same_interface():
     for name in ("translate", "repair"):
         assert callable(getattr(GroqSynthesisEngine, name))
         assert callable(getattr(GeminiSynthesisEngine, name))
+
+
+# --- Retry-After --------------------------------------------------------
+
+
+async def test_waits_as_long_as_retry_after_asks(monkeypatch):
+    """A 1s/2s backoff against a limit resetting in 7s burns every attempt
+    inside the same window. The provider's own hint is what gets waited."""
+    import asyncio
+
+    waits: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        waits.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    engine, seen = engine_returning(
+        httpx.Response(429, headers={"retry-after": "7"}, json={"error": "tokens per minute"}),
+        completion("SELECT 1"),
+    )
+
+    assert await engine.translate("q", SCHEMA, "mysql") == "SELECT 1"
+    assert len(seen) == 2
+    assert waits == [7.5]
+
+
+async def test_a_long_retry_after_fails_fast_with_the_wait():
+    """A daily limit will not clear inside one request; say how long instead."""
+    engine, seen = engine_returning(
+        httpx.Response(429, headers={"retry-after": "5400"}, json={"error": "tokens per day"})
+    )
+
+    with pytest.raises(LlmUnavailableError, match="about 90 minutes"):
+        await engine.translate("q", SCHEMA, "mysql")
+    assert len(seen) == 1
+
+
+async def test_repeated_rate_limits_say_so(monkeypatch):
+    import asyncio
+
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    engine, _ = engine_returning(
+        *[httpx.Response(429, headers={"retry-after": "2"}, json={"error": "slow"}) for _ in range(3)]
+    )
+
+    with pytest.raises(LlmUnavailableError, match="rate-limiting"):
+        await engine.translate("q", SCHEMA, "mysql")

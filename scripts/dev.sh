@@ -99,8 +99,40 @@ echo "→ checking configuration"
 [ -f "$ROOT/server-gateway/.env" ] || { echo "✗ server-gateway/.env is missing (copy .env.example)" >&2; exit 1; }
 require_env "$ROOT/control-plane/.env" MONGODB_URI
 require_env "$ROOT/control-plane/.env" GATEWAY_INTERNAL_SECRET
-require_env "$ROOT/server-gateway/.env" GEMINI_API_KEY
 require_env "$ROOT/server-gateway/.env" CONTROL_PLANE_INTERNAL_SECRET
+
+# Only the selected provider needs credentials. Ollama needs none, but it
+# does need to be running with the model pulled — checked here because the
+# gateway would otherwise start fine and fail on the first question.
+# A missing key reads as empty. `|| true` is load-bearing: under `set -e`
+# and `pipefail`, grep's no-match exit status would end the script silently.
+env_value() {
+  { grep -E "^$1=" "$ROOT/server-gateway/.env" || true; } | tail -1 | cut -d= -f2- | tr -d '"'"'"' '
+}
+provider="$(env_value LLM_PROVIDER)"
+provider="${provider:-gemini}"
+case "$provider" in
+  gemini) require_env "$ROOT/server-gateway/.env" GEMINI_API_KEY ;;
+  groq) require_env "$ROOT/server-gateway/.env" GROQ_API_KEY ;;
+  ollama)
+    ollama_url="$(env_value OLLAMA_BASE_URL)"
+    ollama_url="${ollama_url:-http://localhost:11434}"
+    ollama_model="$(env_value OLLAMA_MODEL)"
+    ollama_model="${ollama_model:-qwen2.5-coder:7b}"
+    if ! tags=$(curl -sf -m 3 "$ollama_url/api/tags"); then
+      echo "✗ LLM_PROVIDER=ollama but nothing answers at $ollama_url — start it with: ollama serve" >&2
+      exit 1
+    fi
+    # Ollama stores an untagged name as ":latest".
+    [[ "$ollama_model" == *:* ]] || ollama_model="$ollama_model:latest"
+    if ! grep -q "\"name\":\"$ollama_model\"" <<<"$tags"; then
+      echo "✗ Ollama does not have $ollama_model — pull it with: ollama pull $ollama_model" >&2
+      exit 1
+    fi
+    echo "  ✓ ollama is serving $ollama_model"
+    ;;
+  *) echo "✗ unknown LLM_PROVIDER=$provider in server-gateway/.env (gemini, groq or ollama)" >&2; exit 1 ;;
+esac
 
 # The single most common local misconfiguration: the two tiers disagree on
 # the shared secret, and every query fails with an opaque 503.

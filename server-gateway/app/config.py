@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-LlmProvider = Literal["gemini", "groq"]
+LlmProvider = Literal["gemini", "groq", "ollama"]
 
 
 class Settings(BaseSettings):
@@ -58,6 +58,21 @@ class Settings(BaseSettings):
     groq_timeout_seconds: float = 45.0
     groq_max_output_tokens: int = 2048
 
+    # Ollama — a model running on this machine, for local development or a
+    # fully offline deployment. No key: whoever can reach the port can use
+    # it, so keep the default localhost address unless you mean otherwise.
+    # Uses Ollama's native /api/chat rather than its OpenAI-compatible
+    # route, because only the native one accepts `num_ctx`: Ollama's default
+    # context (2-4K tokens) is smaller than a schema blueprint plus the
+    # system prompt, and an overflowing prompt is truncated silently.
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5-coder:7b"
+    ollama_temperature: float = 0.0
+    # Generous: on CPU, a 7B model can take a minute to read a large schema.
+    ollama_timeout_seconds: float = 180.0
+    ollama_num_ctx: int = 8192
+    ollama_max_output_tokens: int = 2048
+
     def require_provider_key(self) -> None:
         """
         Fail fast at startup if the selected provider has no key, rather
@@ -67,6 +82,8 @@ class Settings(BaseSettings):
             raise ValueError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini")
         if self.llm_provider == "groq" and not self.groq_api_key.strip():
             raise ValueError("GROQ_API_KEY is required when LLM_PROVIDER=groq")
+        if self.llm_provider == "ollama" and not self.ollama_model.strip():
+            raise ValueError("OLLAMA_MODEL is required when LLM_PROVIDER=ollama")
 
     # Hugging Face Inference API — powers semantic schema matching (see
     # `services/embeddings.py`). Deliberately *not* required: with no token

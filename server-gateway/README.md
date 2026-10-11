@@ -133,14 +133,21 @@ branches on:
 - **A 401 from the control plane is reported as 503, not 401.** It means our
   `X-Internal-Secret` was rejected — a gateway misconfiguration. Surfacing it
   as an auth error would send the operator chasing their own `api_token`.
-- **The provider is swappable** (`LLM_PROVIDER=gemini|groq`). Translation is
+- **The provider is swappable** (`LLM_PROVIDER=gemini|groq|ollama`). Translation is
   a small, well-specified task, and the guardrail — which is what actually
-  keeps the system safe — doesn't care who produced the string. Both engines
+  keeps the system safe — doesn't care who produced the string. All engines
   satisfy the same `SynthesisEngine` protocol, share the same prompts, and
   pin temperature to 0.
   **Groq is the pragmatic choice for development**: its free tier allows
   thousands of requests per day, where Gemini's allows roughly 20 *per model
   per day*, which a single afternoon of testing exhausts.
+  **Ollama runs a model on your own machine** — no key, no quota, works
+  offline. Set `LLM_PROVIDER=ollama` and `OLLAMA_MODEL` (e.g.
+  `qwen2.5-coder:7b`). It calls Ollama's native `/api/chat` so it can set
+  `num_ctx`; Ollama's default window is smaller than a schema blueprint and
+  truncates silently. Small models are less accurate, but the guardrail and
+  self-heal loop still apply — a weak model yields failed queries, never
+  unsafe ones.
 - **Model choice**: the spec names `gemini-2.5-flash`, but Google has closed
   that model to new API keys (it 404s with "no longer available to new
   users"), so the default is the current Flash generation. Temperature stays
